@@ -137,12 +137,32 @@ object SensitiveDataMasker {
                         value
                     }
                 }
-                is Map<*, *> -> maskSensitiveData(value as Map<String, Any?>)
+                is Map<*, *> -> maskMapSafely(value)
                 is List<*> -> value.map { item ->
-                    if (item is Map<*, *>) maskSensitiveData(item as Map<String, Any?>) else item
+                    if (item is Map<*, *>) maskMapSafely(item) else item
                 }
                 else -> value
             }
+        }
+    }
+
+    /**
+     * Safely masks a map with unknown key types.
+     * Only processes maps with String keys, returns original map otherwise.
+     */
+    private fun maskMapSafely(map: Map<*, *>): Any {
+        return try {
+            // Check if all keys are strings
+            if (map.keys.all { it is String }) {
+                @Suppress("UNCHECKED_CAST")
+                maskSensitiveData(map as Map<String, Any?>)
+            } else {
+                // Return original map if keys are not all strings
+                map
+            }
+        } catch (e: Exception) {
+            // Return original map if casting fails
+            map
         }
     }
 

@@ -2,7 +2,6 @@ package org.incept5.platform.core.ratelimit.service
 
 import io.github.bucket4j.Bandwidth
 import io.github.bucket4j.Bucket
-import io.github.bucket4j.Refill
 import jakarta.enterprise.context.ApplicationScoped
 import org.slf4j.LoggerFactory
 import java.time.Duration
@@ -72,10 +71,10 @@ class RateLimitService {
      * @return Configured Bucket instance
      */
     private fun createBucket(requestsPerMinute: Int): Bucket {
-        val bandwidth = Bandwidth.classic(
-            requestsPerMinute.toLong(),
-            Refill.intervally(requestsPerMinute.toLong(), Duration.ofMinutes(1))
-        )
+        val bandwidth = Bandwidth.builder()
+            .capacity(requestsPerMinute.toLong())
+            .refillIntervally(requestsPerMinute.toLong(), Duration.ofMinutes(1))
+            .build()
 
         return Bucket.builder()
             .addLimit(bandwidth)
