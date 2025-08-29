@@ -185,26 +185,33 @@ This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates 
 
 ### JWT Validation Configuration
 
-The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. Configure the following properties in your `application.properties` or `application.yml`:
+The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. Configure the following properties in your `application.yml`:
 
 #### Required Properties
 
-```properties
+```yaml
 # JWT secret for token validation (base64 encoded)
-supabase.jwt.secret=your-base64-encoded-jwt-secret
+supabase:
+  jwt:
+    secret: your-base64-encoded-jwt-secret
 
 # Base API URL for token issuer validation
-api.base.url=https://your-api-domain.com
+api:
+  base:
+    url: https://your-api-domain.com
 ```
 
 #### Optional Properties
 
-```properties
+```yaml
 # Supabase auth path (default: /auth/v1)
-auth.supabase.path=/auth/v1
-
-# Platform OAuth path (default: /api/v1/oauth/token)
-auth.platform.oauth.path=/api/v1/oauth/token
+auth:
+  supabase:
+    path: /auth/v1
+  # Platform OAuth path (default: /api/v1/oauth/token)
+  platform:
+    oauth:
+      path: /api/v1/oauth/token
 ```
 
 #### Token Source Detection
@@ -234,14 +241,6 @@ Platform tokens should contain:
   - `entity_id`: Optional entity ID
 
 #### Example Configuration
-
-**application.properties**
-```properties
-supabase.jwt.secret=eW91ci1iYXNlNjQtZW5jb2RlZC1qd3Qtc2VjcmV0
-api.base.url=https://api.yourcompany.com
-auth.supabase.path=/auth/v1
-auth.platform.oauth.path=/api/v1/oauth/token
-```
 
 **application.yml**
 ```yaml
