@@ -29,7 +29,6 @@ class ScopeAuthorizationFilterTest {
     private val mockResourceInfo = mock<ResourceInfo>()
     private val mockSecurityContext = mock<SecurityContext>()
     private val mockMethod = mock<Method>()
-    private val mockResourceClass = mock<Class<*>>()
     private val algorithm = Algorithm.HMAC256("test-secret-key-that-is-long-enough-for-hmac256-algorithm")
 
     @BeforeEach
@@ -42,14 +41,14 @@ class ScopeAuthorizationFilterTest {
 
         whenever(mockRequestContext.securityContext).thenReturn(mockSecurityContext)
         whenever(mockResourceInfo.resourceMethod).thenReturn(mockMethod)
-        whenever(mockResourceInfo.resourceClass).thenReturn(mockResourceClass)
+        // Resource class will be set per test as needed
     }
 
     @Test
     fun `should pass when no RequireScope annotation is present`() {
         // Given
         whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(null)
-        whenever(mockResourceClass.getAnnotation(RequireScope::class.java)).thenReturn(null)
+        whenever(mockResourceInfo.resourceClass).thenReturn(TestResourceWithoutAnnotation::class.java)
 
         // When/Then - Should not throw any exception
         scopeFilter.filter(mockRequestContext)
@@ -237,12 +236,11 @@ class ScopeAuthorizationFilterTest {
     @Test
     fun `should use class-level annotation when method-level annotation not present`() {
         // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("merchant:read")
         val principal = createApiPrincipal(clientId = "client-class")
         val token = createJwtToken(scopes = listOf("merchant:read"))
         
         whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(null)
-        whenever(mockResourceClass.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
+        whenever(mockResourceInfo.resourceClass).thenReturn(TestResourceWithAnnotation::class.java)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
 
@@ -334,3 +332,9 @@ class ScopeAuthorizationFilterTest {
         return tokenBuilder.sign(algorithm)
     }
 }
+
+// Test resource classes for annotation testing
+class TestResourceWithoutAnnotation
+
+@RequireScope("merchant:read")
+class TestResourceWithAnnotation
