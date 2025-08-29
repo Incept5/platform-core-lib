@@ -18,6 +18,40 @@ import io.kotest.matchers.shouldBe
 import java.lang.reflect.Method
 import jakarta.ws.rs.core.MultivaluedHashMap
 
+// Test classes with various annotation configurations
+@Authenticated(allowedRoles = ["platform_admin"])
+class TestControllerWithClassAnnotation {
+    fun methodWithoutAnnotation() {}
+    
+    @Authenticated(allowedRoles = ["entity_admin"])
+    fun methodWithAnnotation() {}
+}
+
+class TestControllerWithoutClassAnnotation {
+    fun methodWithoutAnnotation() {}
+    
+    @Authenticated(allowedRoles = ["entity_admin", "platform_admin"])
+    fun methodWithMultipleRoles() {}
+    
+    @Authenticated(allowedRoles = [])
+    fun methodWithNoRoles() {}
+    
+    @Authenticated(
+        requiresEntityPermission = true,
+        entityIdParam = "partnerId",
+        entityType = "partner",
+        allowedRoles = ["entity_admin", "platform_admin"]
+    )
+    fun methodWithEntityPermission() {}
+    
+    @Authenticated(
+        requiresEntityPermission = true,
+        entityIdParam = "missingParam",
+        entityType = "partner"
+    )
+    fun methodWithMissingParam() {}
+}
+
 class AuthenticationFilterTest {
 
     private lateinit var authenticationFilter: AuthenticationFilter
@@ -25,8 +59,7 @@ class AuthenticationFilterTest {
     private val mockResourceInfo = mock<ResourceInfo>()
     private val mockSecurityContext = mock<SecurityContext>()
     private val mockUriInfo = mock<UriInfo>()
-    private val mockMethod = mock<Method>()
-    private val mockResourceClass = mock<Class<*>>()
+    // We'll use real methods and classes from our test controllers
 
     @BeforeEach
     fun setup() {
@@ -38,15 +71,18 @@ class AuthenticationFilterTest {
 
         whenever(mockRequestContext.securityContext).thenReturn(mockSecurityContext)
         whenever(mockRequestContext.uriInfo).thenReturn(mockUriInfo)
-        whenever(mockResourceInfo.resourceMethod).thenReturn(mockMethod)
-        whenever(mockResourceInfo.resourceClass).thenReturn(mockResourceClass)
+    }
+    
+    private fun setupMethodAndClass(methodName: String, controllerClass: Class<*>) {
+        val method = controllerClass.getMethod(methodName)
+        whenever(mockResourceInfo.resourceMethod).thenReturn(method)
+        whenever(mockResourceInfo.resourceClass).thenReturn(controllerClass)
     }
 
     @Test
     fun `should pass when no authentication annotation is present`() {
-        // Given
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(null)
-        whenever(mockResourceClass.getAnnotation(Authenticated::class.java)).thenReturn(null)
+        // Given - method without annotation on class without annotation
+        setupMethodAndClass("methodWithoutAnnotation", TestControllerWithoutClassAnnotation::class.java)
 
         // When/Then - Should not throw any exception
         authenticationFilter.filter(mockRequestContext)
@@ -57,9 +93,8 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should throw UnauthorizedException when no principal present`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation()
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
+        // Given - method with annotation but no principal
+        setupMethodAndClass("methodWithMultipleRoles", TestControllerWithoutClassAnnotation::class.java)
         whenever(mockSecurityContext.userPrincipal).thenReturn(null)
 
         // When/Then
@@ -70,10 +105,9 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should throw UnauthorizedException when principal is not ApiPrincipal`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation()
+        // Given - method with annotation but wrong principal type
+        setupMethodAndClass("methodWithMultipleRoles", TestControllerWithoutClassAnnotation::class.java)
         val mockPrincipal = mock<java.security.Principal>()
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(mockPrincipal)
 
         // When/Then
@@ -84,13 +118,10 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should pass when user has required role`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            allowedRoles = arrayOf("entity_admin", "platform_admin")
-        )
+        // Given - method with multiple allowed roles, user has one of them
+        setupMethodAndClass("methodWithMultipleRoles", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(UserRole.entity_admin)
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole("entity_admin")).thenReturn(true)
 
@@ -103,13 +134,10 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should abort request when user lacks required role`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            allowedRoles = arrayOf("platform_admin")
-        )
+        // Given - use class annotation that requires platform_admin, user is entity_user
+        setupMethodAndClass("methodWithoutAnnotation", TestControllerWithClassAnnotation::class.java)
         val principal = createApiPrincipal(UserRole.entity_user)
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole("platform_admin")).thenReturn(false)
 
@@ -128,13 +156,18 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should pass when multiple roles allowed and user has one of them`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            allowedRoles = arrayOf("entity_admin", "platform_admin", "entity_user")
-        )
+        // Given - method allows multiple roles, user has entity_user
+        setupMethodAndClass("methodWithMultipleRoles", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(UserRole.entity_user)
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
+        // First create a test controller with entity_user role included
+        val testMethod = object {
+            @Authenticated(allowedRoles = ["entity_admin", "platform_admin", "entity_user"])
+            fun methodWithEntityUserRole() {}
+        }.javaClass.getMethod("methodWithEntityUserRole")
+        
+        whenever(mockResourceInfo.resourceMethod).thenReturn(testMethod)
+        whenever(mockResourceInfo.resourceClass).thenReturn(TestControllerWithoutClassAnnotation::class.java)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole("entity_admin")).thenReturn(false)
         whenever(mockSecurityContext.isUserInRole("platform_admin")).thenReturn(false)
@@ -148,12 +181,8 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should check entity permission when requiresEntityPermission is true and user has permission`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            requiresEntityPermission = true,
-            entityIdParam = "partnerId",
-            entityType = "partner"
-        )
+        // Given - method requires entity permission, platform admin should have access
+        setupMethodAndClass("methodWithEntityPermission", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(
             userRole = UserRole.platform_admin,
             entityType = EntityType.partner,
@@ -163,7 +192,6 @@ class AuthenticationFilterTest {
             add("partnerId", "partner-123")
         }
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole(UserRole.platform_admin.name)).thenReturn(true)
         whenever(mockUriInfo.pathParameters).thenReturn(pathParams)
@@ -176,12 +204,8 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should abort request when entity permission required but user lacks permission`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            requiresEntityPermission = true,
-            entityIdParam = "partnerId",
-            entityType = "partner"
-        )
+        // Given - entity admin trying to access different partner's resources
+        setupMethodAndClass("methodWithEntityPermission", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(
             userRole = UserRole.entity_admin,
             entityType = EntityType.partner,
@@ -191,7 +215,6 @@ class AuthenticationFilterTest {
             add("partnerId", "partner-123")
         }
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole(UserRole.platform_admin.name)).thenReturn(false)
         whenever(mockSecurityContext.isUserInRole(UserRole.entity_admin.name)).thenReturn(true)
@@ -212,12 +235,8 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should allow entity admin access to their own entity`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            requiresEntityPermission = true,
-            entityIdParam = "partnerId",
-            entityType = "partner"
-        )
+        // Given - entity admin accessing their own partner's resources
+        setupMethodAndClass("methodWithEntityPermission", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(
             userRole = UserRole.entity_admin,
             entityType = EntityType.partner,
@@ -227,7 +246,6 @@ class AuthenticationFilterTest {
             add("partnerId", "partner-123")
         }
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole(UserRole.platform_admin.name)).thenReturn(false)
         whenever(mockSecurityContext.isUserInRole(UserRole.entity_admin.name)).thenReturn(true)
@@ -241,18 +259,13 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should throw IllegalStateException when entity ID parameter not found`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            requiresEntityPermission = true,
-            entityIdParam = "missingParam",
-            entityType = "partner"
-        )
+        // Given - method expects missingParam but pathParams has partnerId
+        setupMethodAndClass("methodWithMissingParam", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(UserRole.entity_admin)
         val pathParams = MultivaluedHashMap<String, String>().apply {
             add("partnerId", "partner-123")
         }
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockUriInfo.pathParameters).thenReturn(pathParams)
 
@@ -264,14 +277,10 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should use class-level annotation when method-level annotation not present`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            allowedRoles = arrayOf("platform_admin")
-        )
+        // Given - method without annotation on class with annotation
+        setupMethodAndClass("methodWithoutAnnotation", TestControllerWithClassAnnotation::class.java)
         val principal = createApiPrincipal(UserRole.platform_admin)
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(null)
-        whenever(mockResourceClass.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole("platform_admin")).thenReturn(true)
 
@@ -283,13 +292,10 @@ class AuthenticationFilterTest {
 
     @Test
     fun `should pass when no roles specified in annotation`() {
-        // Given
-        val authenticatedAnnotation = createAuthenticatedAnnotation(
-            allowedRoles = arrayOf()
-        )
+        // Given - method with empty roles array
+        setupMethodAndClass("methodWithNoRoles", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(UserRole.entity_user)
         
-        whenever(mockMethod.getAnnotation(Authenticated::class.java)).thenReturn(authenticatedAnnotation)
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
 
         // When/Then - Should not throw any exception
@@ -300,21 +306,7 @@ class AuthenticationFilterTest {
         verify(mockSecurityContext, never()).isUserInRole(any())
     }
 
-    // Helper methods for creating test objects
-
-    private fun createAuthenticatedAnnotation(
-        allowedRoles: Array<String> = arrayOf(),
-        requiresEntityPermission: Boolean = false,
-        entityIdParam: String = "",
-        entityType: String = ""
-    ): Authenticated {
-        val mockAnnotation = mock<Authenticated>()
-        whenever(mockAnnotation.allowedRoles).thenReturn(allowedRoles)
-        whenever(mockAnnotation.requiresEntityPermission).thenReturn(requiresEntityPermission)
-        whenever(mockAnnotation.entityIdParam).thenReturn(entityIdParam)
-        whenever(mockAnnotation.entityType).thenReturn(entityType)
-        return mockAnnotation
-    }
+    // Helper method for creating test objects
 
     private fun createApiPrincipal(
         userRole: UserRole,
