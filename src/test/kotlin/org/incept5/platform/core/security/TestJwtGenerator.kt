@@ -1,97 +1,46 @@
 
 package org.incept5.platform.core.security
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import jakarta.enterprise.context.ApplicationScoped
+import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.incept5.platform.core.model.EntityType
-import java.time.Instant
-import java.util.*
 
+/**
+ * Test-specific JWT generator that extends the base JwtGenerator with CDI integration
+ * and debug logging capabilities for testing purposes.
+ */
 @ApplicationScoped
-class TestJwtGenerator {
-    @ConfigProperty(name = "supabase.jwt.secret")
-    lateinit var jwtSecret: String
+class TestJwtGenerator @Inject constructor(
+    @ConfigProperty(name = "supabase.jwt.secret") jwtSecret: String,
+    @ConfigProperty(name = "api.base.url") private val apiBaseUrl: String
+) : JwtGenerator(jwtSecret) {
 
-    @ConfigProperty(name = "api.base.url")
-    lateinit var apiBaseUrl: String
-
+    /**
+     * Generate user token with default Supabase issuer and debug logging
+     */
     fun generateUserToken(user: TestUser = TestUser(), expirationMinutes: Long = 60): String {
-        val now = Instant.now()
-        val algorithm = Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
-
-        // Create the token builder
-        val tokenBuilder = JWT.create()
-            .withSubject(user.userId.toString())
-            .withIssuedAt(Date.from(now))
-            .withExpiresAt(Date.from(now.plusSeconds(expirationMinutes * 60)))
-            .withClaim("role", user.userRole.name)
-            .withClaim("aud", "authenticated")
-           // Supabase tokens need the expected issuer for proper recognition
-            .withIssuer("$apiBaseUrl/auth/v1")
-            .withClaim("email", "${user.userId}@test.com")
-
-        // Create app_metadata map
-        val appMetadata = HashMap<String, Any>()
-
-        // Add entity_id and entity_type to app_metadata if they exist
-        if (user.entityId != null) {
-            appMetadata["entity_id"] = user.entityId
-        }
-
-        if (user.entityType != null) {
-            appMetadata["entity_type"] = user.entityType.name
-        }
-
-        // Add app_metadata to the token if it's not empty
-        if (appMetadata.isNotEmpty()) {
-            tokenBuilder.withClaim("app_metadata", appMetadata)
-        }
-
-        // TODO: map user role to allowed scopes
-        val scopes = emptyArray<String>()
-        tokenBuilder.withArrayClaim("scopes", scopes)
-
+        val issuer = "$apiBaseUrl/auth/v1"
+        
         // Log the token details for debugging
         println("Generating token for user: ${user.userId}, role: ${user.userRole}, entityId: ${user.entityId}, entityType: ${user.entityType}")
-        println("App metadata: $appMetadata")
-        println("Scopes: ${scopes.joinToString(", ")}")
-
-        return tokenBuilder.sign(algorithm)
+        println("Issuer: $issuer")
+        
+        return super.generateUserToken(user, issuer, expirationMinutes)
     }
 
+    /**
+     * Generate API key token with default OAuth issuer and debug logging
+     */
     fun generateApiKeyToken(clientId: String, partnerId: String, expirationMinutes: Long = 60): String {
-        val now = Instant.now()
-        val algorithm = Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
-        // Create app_metadata map
-        val appMetadata = HashMap<String, Any>()
-
-        // Add entity_id and entity_type to app_metadata
-        appMetadata["entity_id"] = partnerId
-        appMetadata["entity_type"] = EntityType.partner.name
-        // Create the token builder
-        val tokenBuilder = JWT.create()
-            .withSubject(clientId)
-            .withIssuedAt(Date.from(now))
-            .withExpiresAt(Date.from(now.plusSeconds(expirationMinutes * 60)))
-            .withClaim("role", "entity_admin")
-            .withClaim("aud", "authenticated")
-            // FanFair tokens need the expected issuer for proper recognition
-            .withIssuer("$apiBaseUrl/api/v1/oauth/token")
-            .withClaim("app_metadata", appMetadata)
-
-
-        // TODO: map user role to allowed scopes
-        val scopes = arrayOf("payment:create", "payment:read", "payment:update", "payment:refund")
-        tokenBuilder.withArrayClaim("scopes", scopes)
-
+        val issuer = "$apiBaseUrl/api/v1/oauth/token"
+        
         // Log the token details for debugging
-        println("Generating token for API Key: ${clientId}")
-        println("App metadata: $appMetadata")
-        println("Scopes: ${scopes.joinToString(", ")}")
-
-        return tokenBuilder.sign(algorithm)
+        println("Generating token for API Key: $clientId")
+        println("Partner ID: $partnerId")
+        println("Issuer: $issuer")
+        
+        return super.generateApiKeyToken(clientId, partnerId, issuer, expirationMinutes)
     }
 
     /**
@@ -103,41 +52,27 @@ class TestJwtGenerator {
         scopes: Array<String>,
         expirationMinutes: Long = 60
     ): String {
-        val now = Instant.now()
-        val algorithm = Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
-
-        // Create app_metadata map
-        val appMetadata = HashMap<String, Any>()
-        appMetadata["entity_id"] = partnerId
-        appMetadata["entity_type"] = EntityType.partner.name
-
-        // Create the token builder
-        val tokenBuilder = JWT.create()
-            .withSubject(clientId)
-            .withIssuedAt(Date.from(now))
-            .withExpiresAt(Date.from(now.plusSeconds(expirationMinutes * 60)))
-            .withClaim("role", "entity_admin")
-            .withClaim("aud", "authenticated")
-            .withIssuer("$apiBaseUrl/api/v1/oauth/token")
-            .withClaim("app_metadata", appMetadata)
-            .withArrayClaim("scopes", scopes)
-            .withClaim("clientId", clientId)
-
+        val issuer = "$apiBaseUrl/api/v1/oauth/token"
+        
         // Log the token details for debugging
-        println("Generating API key token with custom scopes: clientId=${clientId}, partnerId=${partnerId}")
-        println("App metadata: $appMetadata")
+        println("Generating API key token with custom scopes: clientId=$clientId, partnerId=$partnerId")
+        println("Issuer: $issuer")
         println("Scopes: ${scopes.joinToString(", ")}")
-
-        return tokenBuilder.sign(algorithm)
+        
+        return super.generateApiKeyTokenWithScopes(clientId, partnerId, scopes, issuer, expirationMinutes)
     }
 
+    /**
+     * Generate service role token with default Supabase issuer and debug logging
+     */
     fun generateServiceRoleToken(role: String = "service_role"): String {
-        val algorithm = Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
-        return JWT.create()
-            .withClaim("role", role)
-            .withIssuer("$apiBaseUrl/auth/v1")
-            .withSubject("service-role-token")  // Add subject claim required for FanFair token validation
-            .sign(algorithm)
+        val issuer = "$apiBaseUrl/auth/v1"
+        
+        // Log the token details for debugging
+        println("Generating service role token: role=$role")
+        println("Issuer: $issuer")
+        
+        return super.generateServiceRoleToken(role, issuer)
     }
 
 }
