@@ -1,16 +1,50 @@
+// Set default version and group
+group = "com.github.incept5"  // Default group for JitPack compatibility
+
+// Determine the version to use
+val providedVersion = project.properties["version"]?.toString()
+val buildNumber = project.properties["buildNumber"]?.toString()
+
+// Set the version based on the available information
+if (providedVersion != null && providedVersion != "unspecified" && providedVersion != "1.0.0-SNAPSHOT") {
+    version = providedVersion
+} else if (buildNumber != null && buildNumber.isNotEmpty()) {
+    version = "1.0.$buildNumber"
+} else {
+    version = "1.0.0-SNAPSHOT"
+}
+
+// If a specific group is provided, use that
+val providedGroup = project.properties["group"]?.toString()
+if (providedGroup != null && providedGroup.isNotEmpty()) {
+    group = providedGroup
+}
+
+// Check for publishGroupId which will be used for Maven publications
+val publishGroupId = project.properties["publishGroupId"]?.toString() ?: group.toString()
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.allopen)
     `java-library`
+    `maven-publish`
 }
 
-group = "org.incept5.platform"
-version = "1.0.0-SNAPSHOT"
-
+// Apply a specific Java toolchain to ease working on different environments.
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(21))
+    }
+    withJavadocJar()
+    withSourcesJar()
+}
+
+// Configure Kotlin to target JVM 21
+kotlin {
+    jvmToolchain(21)
+
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
 
@@ -112,4 +146,63 @@ tasks.jar {
     from(sourceSets["main"].resources) {
         include("META-INF/beans.xml")
     }
+}
+
+// Configure publishing for JitPack
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            
+            // For JitPack compatibility, we need to use the correct group ID format
+            val jitpackGroupId = if (System.getenv("JITPACK") != null) {
+                // When building on JitPack
+                "com.github.incept5"
+            } else {
+                // For local development
+                publishGroupId
+            }
+
+            groupId = jitpackGroupId
+            artifactId = "platform-core-lib"
+            version = project.version.toString()
+
+            // Add POM information
+            pom {
+                name.set("Platform Core Library")
+                description.set("Core platform utilities and components for Quarkus applications")
+                url.set("https://github.com/incept5/platform-core-lib")
+
+                licenses {
+                    license {
+                        name.set("The Apache License, Version 2.0")
+                        url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("incept5")
+                        name.set("Incept5")
+                        email.set("info@incept5.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:github.com/incept5/platform-core-lib.git")
+                    developerConnection.set("scm:git:ssh://github.com/incept5/platform-core-lib.git")
+                    url.set("https://github.com/incept5/platform-core-lib/tree/main")
+                }
+            }
+        }
+    }
+
+    repositories {
+        mavenLocal()
+    }
+}
+
+// Suppress enforced platform validation for publishing
+tasks.withType<GenerateModuleMetadata> {
+    suppressedValidationErrors.add("enforced-platform")
 }

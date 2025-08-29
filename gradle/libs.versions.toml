@@ -1,0 +1,44 @@
+[versions]
+kotlin = "2.1.0"
+quarkus = "3.22.2"
+logbook = "3.10.0"
+mockito-kotlin = "5.2.1"
+kotest = "5.8.0"
+spring = "6.2.6"
+reactor-netty = "1.2.5"
+ulid = "5.2.2"
+java-jwt = "4.4.0"
+
+# Incept5 Libraries
+correlation = "1.0.20"
+error-lib = "1.0.26"
+cryptography-lib = "1.0.28"
+
+[libraries]
+# Core dependencies
+ulid = { module = "com.github.f4b6a3:ulid-creator", version.ref = "ulid" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
+
+# Logbook
+logbook-bom = { module = "org.zalando:logbook-bom", version.ref = "logbook" }
+logbook-core = { module = "org.zalando:logbook-core" }
+logbook-jaxrs = { module = "org.zalando:logbook-jaxrs" }
+
+# Spring (for WebClient)
+spring-webflux = { module = "org.springframework:spring-webflux", version.ref = "spring" }
+spring-context = { module = "org.springframework:spring-context", version.ref = "spring" }
+reactor-netty = { module = "io.projectreactor.netty:reactor-netty", version.ref = "reactor-netty" }
+
+# Testing
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockito-kotlin" }
+
+# Incept5 Libraries
+incept5-correlation = { module = "com.github.incept5:correlation", version.ref = "correlation" }
+incept5-error-quarkus = { module = "com.github.incept5.error-lib:error-quarkus", version.ref = "error-lib" }
+incept5-cryptography = { module = "com.github.incept5.cryptography-lib:cryptography-quarkus", version.ref = "cryptography-lib" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-allopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "kotlin" }
