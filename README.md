@@ -183,6 +183,84 @@ This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates 
 - Quarkus Logging for structured logging
 - JAX-RS for REST endpoints
 
+### JWT Validation Configuration
+
+The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. Configure the following properties in your `application.properties` or `application.yml`:
+
+#### Required Properties
+
+```properties
+# JWT secret for token validation (base64 encoded)
+supabase.jwt.secret=your-base64-encoded-jwt-secret
+
+# Base API URL for token issuer validation
+api.base.url=https://your-api-domain.com
+```
+
+#### Optional Properties
+
+```properties
+# Supabase auth path (default: /auth/v1)
+auth.supabase.path=/auth/v1
+
+# Platform OAuth path (default: /api/v1/oauth/token)
+auth.platform.oauth.path=/api/v1/oauth/token
+```
+
+#### Token Source Detection
+
+The validator automatically detects token sources based on the `issuer` claim:
+
+- **Supabase tokens**: `issuer` = `{api.base.url}{auth.supabase.path}`
+- **Platform tokens**: `issuer` = `{api.base.url}{auth.platform.oauth.path}`
+
+#### Supabase Token Format
+
+Supabase tokens should contain:
+- `sub`: User subject ID
+- `role`: User role (maps to `UserRole` enum)
+- `app_metadata`: Object containing:
+  - `entity_type`: Optional entity type (maps to `EntityType` enum)
+  - `entity_id`: Optional entity ID
+
+#### Platform Token Format
+
+Platform tokens should contain:
+- `sub`: Client ID (for client_credentials flow)
+- `role`: User role (maps to `UserRole` enum) 
+- `scopes`: Array of explicit scopes
+- `app_metadata`: Object containing:
+  - `entity_type`: Optional entity type
+  - `entity_id`: Optional entity ID
+
+#### Example Configuration
+
+**application.properties**
+```properties
+supabase.jwt.secret=eW91ci1iYXNlNjQtZW5jb2RlZC1qd3Qtc2VjcmV0
+api.base.url=https://api.yourcompany.com
+auth.supabase.path=/auth/v1
+auth.platform.oauth.path=/api/v1/oauth/token
+```
+
+**application.yml**
+```yaml
+supabase:
+  jwt:
+    secret: eW91ci1iYXNlNjQtZW5jb2RlZC1qd3Qtc2VjcmV0
+
+api:
+  base:
+    url: https://api.yourcompany.com
+
+auth:
+  supabase:
+    path: /auth/v1
+  platform:
+    oauth:
+      path: /api/v1/oauth/token
+```
+
 ### CDI Bean Discovery
 
 All components use standard CDI annotations (`@ApplicationScoped`, `@Inject`) and are automatically discoverable by Quarkus applications. No additional configuration is needed.
