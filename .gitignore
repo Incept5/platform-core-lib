@@ -5,13 +5,20 @@ venv/
 package-lock.json
 yarn.lock
 
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
 # Build outputs
 dist/
-build/
 target/
 *.class
 *.jar
 *.war
+out/
 
 # IDEs and editors
 .idea/
