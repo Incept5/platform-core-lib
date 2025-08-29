@@ -1,6 +1,6 @@
 # Platform Core Library
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/incept5/platform-core-lib/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/incept5/platform-core-lib/tree/main)
+[![Build and Publish](https://github.com/incept5/platform-core-lib/actions/workflows/build-and-publish.yml/badge.svg)](https://dl.circleci.com/status-badge/redirect/gh/incept5/platform-core-lib/tree/main)
 [![](https://jitpack.io/v/incept5/platform-core-lib.svg)](https://jitpack.io/#incept5/platform-core-lib)
 
 Standalone Kotlin library providing platform-level utilities and components for Quarkus applications.
