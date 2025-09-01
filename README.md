@@ -1,3 +1,4 @@
+
 # Platform Core Library
 
 [![Build and Publish](https://github.com/incept5/platform-core-lib/actions/workflows/build-and-publish.yml/badge.svg)](https://dl.circleci.com/status-badge/redirect/gh/incept5/platform-core-lib/tree/main)
@@ -11,11 +12,11 @@ This library contains reusable platform utilities and components designed for Qu
 
 - **Authentication & Authorization**: JWT validation, security filters, scope-based access control
 - **Configuration**: Shared configuration utilities and startup logging
-- **Domain Utilities**: ULID generation, ID services, session management
-- **Error Handling**: Global exception mappers, structured error responses
-- **Logging**: Correlation ID management, structured logging, audit logging, sensitive data masking
+- **Domain Utilities**: ULID generation and ID services
 - **Rate Limiting**: Comprehensive rate limiting with annotations and interceptors
 - **Security**: Authentication mechanisms, JWT validation, API principals
+- **Basic Error Handling**: Core exception types and security exception mapping
+- **HTTP Logging**: Request logging and correlation ID management
 
 ## Installation
 
@@ -73,9 +74,9 @@ dependencies {
 org.incept5.platform.core/
 ├── auth/           # Authentication & authorization (@Authenticated, @RequireScope)
 ├── config/         # Configuration utilities and startup logging
-├── domain/         # ID generation (ULID), session management
-├── error/          # Global exception mapping and error responses
-├── logging/        # Correlation ID, structured logging, audit logging
+├── domain/         # ID generation (ULID)
+├── error/          # Basic exception handling (ApiException)
+├── logging/        # HTTP request logging and correlation ID management
 ├── model/          # Core data models (UserRole, EntityType)
 ├── ratelimit/      # Rate limiting (@RateLimit annotation and services)
 └── security/       # JWT validation, ApiPrincipal, security utilities
@@ -96,6 +97,13 @@ class UserController {
     fun getUsers(principal: ApiPrincipal): List<User> {
         // Only authenticated users with 'user:read' scope can access
         return userService.findAll()
+    }
+
+    @POST
+    @Authenticated(allowedRoles = ["platform_admin", "entity_admin"])
+    fun createUser(user: CreateUserRequest, principal: ApiPrincipal): User {
+        // Only admins can create users
+        return userService.create(user)
     }
 }
 ```
@@ -129,38 +137,18 @@ class PublicController {
     fun search(@QueryParam("q") query: String): SearchResults {
         return searchService.search(query)
     }
-}
-```
 
-### Structured Logging
-
-```kotlin
-@ApplicationScoped
-class PaymentService {
-    
-    @Inject
-    lateinit var structuredLogger: StructuredLogger
-    
-    @Inject 
-    lateinit var auditLogger: AuditLogger
-    
-    fun processPayment(payment: Payment) {
-        structuredLogger.info("Processing payment") {
-            put("paymentId", payment.id)
-            put("amount", payment.amount)
-            put("currency", payment.currency)
-        }
-        
-        // Process payment...
-        
-        auditLogger.logPaymentProcessed(payment.id, payment.amount)
+    @POST
+    @Path("/contact")
+    @RateLimit(maxRequests = 5, windowSeconds = 300) // 5 requests per 5 minutes
+    fun submitContact(contactForm: ContactForm): Response {
+        contactService.processContact(contactForm)
+        return Response.ok().build()
     }
 }
 ```
 
-### Error Handling
-
-The library provides automatic global exception handling. Simply throw `ApiException` or let validation exceptions bubble up:
+### Basic Error Handling
 
 ```kotlin
 @ApplicationScoped
@@ -168,7 +156,24 @@ class UserService {
     
     fun findUserById(id: String): User {
         return userRepository.findById(id) 
-            ?: throw ApiException.notFound("User not found with id: $id")
+            ?: throw ApiException("User not found with id: $id")
+    }
+}
+```
+
+### Accessing User Information
+
+```kotlin
+@ApplicationScoped
+class ProfileService {
+    
+    fun getCurrentUserProfile(principal: ApiPrincipal): UserProfile {
+        return when (principal.userRole) {
+            UserRole.PLATFORM_ADMIN -> getAdminProfile(principal.subject)
+            UserRole.ENTITY_ADMIN -> getEntityAdminProfile(principal.subject, principal.entityId)
+            UserRole.ENTITY_USER -> getUserProfile(principal.subject, principal.entityId)
+            else -> throw ApiException("Insufficient permissions")
+        }
     }
 }
 ```
@@ -180,7 +185,6 @@ class UserService {
 This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates with:
 - Quarkus CDI for dependency injection
 - Quarkus Security for authentication
-- Quarkus Logging for structured logging
 - JAX-RS for REST endpoints
 
 ### JWT Validation Configuration
@@ -264,6 +268,48 @@ auth:
 
 All components use standard CDI annotations (`@ApplicationScoped`, `@Inject`) and are automatically discoverable by Quarkus applications. No additional configuration is needed.
 
+## Core Components
+
+### User Roles
+
+The library defines a comprehensive role hierarchy:
+
+```kotlin
+enum class UserRole {
+    PLATFORM_ADMIN,     // Full platform access
+    SERVICE_ROLE,       // Service-to-service communication
+    ENTITY_ADMIN,       // Entity administration
+    ENTITY_USER,        // Standard entity user
+    ENTITY_READONLY     // Read-only entity access
+}
+```
+
+### Entity Types
+
+Support for different entity contexts:
+
+```kotlin
+enum class EntityType {
+    PARTNER,
+    MERCHANT
+}
+```
+
+### API Principal
+
+Access authenticated user information:
+
+```kotlin
+class ApiPrincipal(
+    val subject: String,
+    val userRole: UserRole,
+    val entityType: EntityType?,
+    val entityId: String?,
+    val scopes: List<String>,
+    val clientId: String?
+)
+```
+
 ## Development
 
 ### Building from Source
@@ -300,20 +346,21 @@ cd platform-core-lib
 - **ID Generation**: ULID Creator
 - **Rate Limiting**: Bucket4j
 - **HTTP Logging**: Zalando Logbook
-- **Reactive HTTP**: Spring WebFlux, Reactor Netty
+- **Cryptography**: BCrypt, Apache Commons Codec
 
-### External Libraries
+### External Incept5 Libraries
 - **Incept5 Correlation**: Request correlation utilities  
-- **Incept5 Error Handling**: Quarkus error handling extensions
+- **Incept5 Error Library**: Enhanced error handling for Quarkus
 - **Incept5 Cryptography**: Cryptographic utilities
 
 ## Architecture Principles
 
 ### What's Included ✅
-- Cross-cutting concerns (logging, correlation, error handling)
+- Cross-cutting concerns (HTTP logging, correlation)
 - Authentication and security infrastructure
 - Shared configuration and utilities  
-- Common domain utilities (ID generation, validation)
+- Common domain utilities (ID generation)
+- Rate limiting infrastructure
 - Platform-level components reused across applications
 
 ### What's Excluded ❌
@@ -321,7 +368,8 @@ cd platform-core-lib
 - Application-specific utilities
 - Database entities (except base classes)
 - API endpoints or controllers
-- Payment/Partner/Merchant specific code
+- Complex error handling and structured logging
+- Session management
 
 ## Versioning
 
