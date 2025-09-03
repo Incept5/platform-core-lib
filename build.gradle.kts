@@ -72,7 +72,6 @@ dependencies {
     // Incept5 external dependencies
     api(libs.incept5.correlation)
     api(libs.incept5.error.quarkus)
-    api(libs.incept5.cryptography)
 
     // JSON processing
     api("com.fasterxml.jackson.core:jackson-databind")
