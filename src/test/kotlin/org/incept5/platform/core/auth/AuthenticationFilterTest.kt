@@ -17,6 +17,7 @@ import org.mockito.kotlin.*
 import io.kotest.matchers.shouldBe
 import java.lang.reflect.Method
 import jakarta.ws.rs.core.MultivaluedHashMap
+import org.incept5.platform.core.error.ForbiddenException
 
 // Test classes with various annotation configurations
 @Authenticated(allowedRoles = ["platform_admin"])
@@ -140,18 +141,10 @@ class AuthenticationFilterTest {
         
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
         whenever(mockSecurityContext.isUserInRole("platform_admin")).thenReturn(false)
+        assertThrows<ForbiddenException> {
+            authenticationFilter.filter(mockRequestContext)
+        }
 
-        // When
-        authenticationFilter.filter(mockRequestContext)
-
-        // Then
-        val responseCaptor = argumentCaptor<Response>()
-        verify(mockRequestContext).abortWith(responseCaptor.capture())
-        
-        val response = responseCaptor.firstValue
-        response.status shouldBe 403
-        val entity = response.entity as Map<*, *>
-        entity["error"] shouldBe "You do not have the required role to perform this action"
     }
 
     @Test
@@ -203,7 +196,7 @@ class AuthenticationFilterTest {
     }
 
     @Test
-    fun `should abort request when entity permission required but user lacks permission`() {
+    fun `should throw exception when entity permission required but user lacks permission`() {
         // Given - entity admin trying to access different partner's resources
         setupMethodAndClass("methodWithEntityPermission", TestControllerWithoutClassAnnotation::class.java)
         val principal = createApiPrincipal(
@@ -220,17 +213,9 @@ class AuthenticationFilterTest {
         whenever(mockSecurityContext.isUserInRole(UserRole.entity_admin.name)).thenReturn(true)
         whenever(mockUriInfo.pathParameters).thenReturn(pathParams)
 
-        // When
-        authenticationFilter.filter(mockRequestContext)
-
-        // Then
-        val responseCaptor = argumentCaptor<Response>()
-        verify(mockRequestContext).abortWith(responseCaptor.capture())
-        
-        val response = responseCaptor.firstValue
-        response.status shouldBe 403
-        val entity = response.entity as Map<*, *>
-        entity["error"] shouldBe "You do not have permission to perform this action"
+        assertThrows<ForbiddenException> {
+            authenticationFilter.filter(mockRequestContext)
+        }
     }
 
     @Test
@@ -270,7 +255,7 @@ class AuthenticationFilterTest {
         whenever(mockUriInfo.pathParameters).thenReturn(pathParams)
 
         // When/Then
-        assertThrows<IllegalStateException> {
+        assertThrows<ForbiddenException> {
             authenticationFilter.filter(mockRequestContext)
         }
     }

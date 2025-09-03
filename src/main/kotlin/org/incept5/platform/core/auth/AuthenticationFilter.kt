@@ -51,48 +51,38 @@ class AuthenticationFilter : ContainerRequestFilter {
             if (!hasAllowedRole) {
                 val roleNames = authenticated.allowedRoles.joinToString(", ")
                 log.warn("Access denied: User ${principal.subject} with role ${principal.userRole} does not have any of the required roles: $roleNames")
-                requestContext.abortWith(
-                    Response.status(Response.Status.FORBIDDEN)
-                        .entity(mapOf("error" to "You do not have the required role to perform this action"))
-                        .build()
-                )
-                return
+                throw ForbiddenException("Access denied: User does not have the required permissions")
             }
         }
 
         // Check entity permissions if required
         if (authenticated.requiresEntityPermission && authenticated.entityIdParam.isNotBlank()) {
             val entityId = requestContext.uriInfo.pathParameters[authenticated.entityIdParam]
-                ?: throw kotlin.IllegalStateException("Entity ID parameter '${authenticated.entityIdParam}' not found in path parameters")
+                ?: throw ForbiddenException("Entity ID parameter '${authenticated.entityIdParam}' not found in path parameters")
 
-            log.info("Checking entity permission for user ${principal.subject} with role ${principal.userRole}")
-            log.info("User entityId: ${(principal as? ApiPrincipal)?.entityId}, entityType: ${(principal as? ApiPrincipal)?.entityType}")
-            log.info("Required entityId: $entityId, entityType: ${authenticated.entityType}")
+            log.debug("Checking entity permission for user ${principal.subject} with role ${principal.userRole}")
+            log.debug("User entityId: ${(principal as? ApiPrincipal)?.entityId}, entityType: ${(principal as? ApiPrincipal)?.entityType}")
+            log.debug("Required entityId: $entityId, entityType: ${authenticated.entityType}")
 
             val hasPermission = when (authenticated.entityType) {
                 "partner" -> {
-                    log.info("Checking partner permission for user ${principal.subject}")
+                    log.debug("Checking partner permission for user ${principal.subject}")
                     val result = AuthUtils.hasPermissionForPartner(securityContext, entityId.first())
-                    log.info("Partner permission check result: $result")
+                    log.debug("Partner permission check result: $result")
                     result
                 }
                 // Add more entity types as needed
                 else -> {
-                    log.info("Using default partner permission check for entity type: ${authenticated.entityType}")
+                    log.debug("Using default partner permission check for entity type: ${authenticated.entityType}")
                     val result = AuthUtils.hasPermissionForPartner(securityContext, entityId.first())
-                    log.info("Default permission check result: $result")
+                    log.debug("Default permission check result: $result")
                     result
                 }
             }
 
             if (!hasPermission) {
                 log.warn("Access denied: User ${principal.subject} with role ${principal.userRole} does not have permission for ${authenticated.entityType} $entityId")
-                requestContext.abortWith(
-                    Response.status(Response.Status.FORBIDDEN)
-                        .entity(mapOf("error" to "You do not have permission to perform this action"))
-                        .build()
-                )
-                return
+                throw ForbiddenException("Access denied: User does not have the required permissions")
             } else {
                 log.debug("User ${principal.subject} has permission for ${authenticated.entityType} $entityId")
             }
