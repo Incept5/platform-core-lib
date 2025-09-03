@@ -4,8 +4,6 @@ package org.incept5.platform.core.auth
 import com.auth0.jwt.JWT
 import com.auth0.jwt.exceptions.JWTDecodeException
 import jakarta.annotation.Priority
-import jakarta.ws.rs.ForbiddenException
-import jakarta.ws.rs.NotAuthorizedException
 import jakarta.ws.rs.Priorities
 import jakarta.ws.rs.container.ContainerRequestContext
 import jakarta.ws.rs.container.ContainerRequestFilter
@@ -13,9 +11,9 @@ import jakarta.ws.rs.container.ResourceInfo
 import jakarta.ws.rs.core.Context
 import jakarta.ws.rs.core.HttpHeaders
 import jakarta.ws.rs.ext.Provider
-import org.incept5.platform.core.error.ApiException
+import org.incept5.platform.core.error.ForbiddenException
+import org.incept5.platform.core.error.UnauthorizedException
 import org.incept5.platform.core.security.ApiPrincipal
-import org.incept5.error.ErrorCategory
 import org.jboss.logging.Logger
 
 /**
@@ -42,12 +40,11 @@ class ScopeAuthorizationFilter : ContainerRequestFilter {
 
         val securityContext = requestContext.securityContext
         val principal = securityContext.userPrincipal as? ApiPrincipal
-            ?: throw NotAuthorizedException("No authentication present")
-
+            ?: throw UnauthorizedException("No authentication present")
+            //throw unauthorised when the token is missing or malformed or expired
         if (requireScope.scopeOnlyAuthorization && principal.clientId.isNullOrEmpty()) {
-            log.debug("Endpoint only accessible with API Key issued tokens")
-            throw ApiException("Access denied: User ${principal.subject} not allowed access. Use tokens issues by a valid API Key instead",
-                ErrorCategory.AUTHORIZATION)
+            log.warn("Subject ${principal.subject} tried to access endpoint which is only accessible with API Key issued tokens")
+            throw ForbiddenException("Access denied: Endpoint only accessible with API Key issued tokens")
         }
         if (principal.clientId.isNullOrEmpty()) { //only tokens issued with API Key have scopes
             log.debug("bypassing scope check for authenticated user")
@@ -65,8 +62,7 @@ class ScopeAuthorizationFilter : ContainerRequestFilter {
         // Check if the required scope is present in the token
         if (requireScope.value !in tokenScopes) {
             log.warn("Access denied: User ${principal.subject} does not have required scope '${requireScope.value}'. Available scopes: ${tokenScopes.joinToString(", ")}")
-            throw ApiException("The request requires higher privileges than provided by the access token",
-                ErrorCategory.AUTHORIZATION)
+            throw ForbiddenException("Access denied: User ${principal.subject} does not have required scope")
         }
 
         log.debug("Scope authorization successful for user ${principal.subject}")
@@ -81,10 +77,10 @@ class ScopeAuthorizationFilter : ContainerRequestFilter {
      */
     private fun extractScopesFromToken(requestContext: ContainerRequestContext): List<String> {
         val authHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION)
-            ?: throw ForbiddenException("No Authorization header present")
+            ?: throw UnauthorizedException("No Authorization header present")
 
         if (!authHeader.startsWith("Bearer ", ignoreCase = true)) {
-            throw ForbiddenException("Invalid Authorization header format")
+            throw UnauthorizedException("Invalid Authorization header format")
         }
 
         val token = authHeader.substring(7)
@@ -110,10 +106,10 @@ class ScopeAuthorizationFilter : ContainerRequestFilter {
             }
         } catch (e: JWTDecodeException) {
             log.error("Failed to decode JWT token for scope extraction", e)
-            throw ForbiddenException("Invalid token format")
+            throw UnauthorizedException("Invalid token format")
         } catch (e: Exception) {
             log.error("Error extracting scopes from token", e)
-            throw ForbiddenException("Error processing token")
+            throw UnauthorizedException("Error processing token")
         }
     }
 }

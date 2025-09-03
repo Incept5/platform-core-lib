@@ -3,12 +3,13 @@ package org.incept5.platform.core.auth
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import jakarta.ws.rs.ForbiddenException
-import jakarta.ws.rs.NotAuthorizedException
+import io.kotest.matchers.equals.shouldBeEqual
+import io.kotest.matchers.string.shouldContain
 import jakarta.ws.rs.container.ContainerRequestContext
 import jakarta.ws.rs.container.ResourceInfo
 import jakarta.ws.rs.core.SecurityContext
-import org.incept5.platform.core.error.ApiException
+import org.incept5.platform.core.error.ForbiddenException
+import org.incept5.platform.core.error.UnauthorizedException
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 import org.incept5.platform.core.security.ApiPrincipal
@@ -16,8 +17,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.*
-import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
 import java.lang.reflect.Method
 import java.time.Instant
 import java.util.*
@@ -65,7 +64,7 @@ class ScopeAuthorizationFilterTest {
         whenever(mockSecurityContext.userPrincipal).thenReturn(null)
 
         // When/Then
-        assertThrows<NotAuthorizedException> {
+        assertThrows<UnauthorizedException> {
             scopeFilter.filter(mockRequestContext)
         }
     }
@@ -113,10 +112,10 @@ class ScopeAuthorizationFilterTest {
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
 
         // When/Then
-        val exception = assertThrows<ApiException> {
+        val exception = assertThrows<ForbiddenException> {
             scopeFilter.filter(mockRequestContext)
         }
-        exception.message shouldContain "higher privileges"
+        exception.message shouldContain "does not have required scope"
     }
 
     @Test
@@ -146,10 +145,10 @@ class ScopeAuthorizationFilterTest {
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
 
         // When/Then
-        val exception = assertThrows<ApiException> {
+        val exception = assertThrows<ForbiddenException> {
             scopeFilter.filter(mockRequestContext)
         }
-        exception.message shouldContain "higher privileges"
+        exception.message shouldContain "does not have required scope"
     }
 
     @Test
@@ -164,14 +163,14 @@ class ScopeAuthorizationFilterTest {
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
 
         // When/Then
-        val exception = assertThrows<ApiException> {
+        val exception = assertThrows<ForbiddenException> {
             scopeFilter.filter(mockRequestContext)
         }
-        exception.message shouldContain "higher privileges"
+        exception.message shouldContain "does not have required scope"
     }
 
     @Test
-    fun `should throw ForbiddenException when no Authorization header present`() {
+    fun `should throw Unauthorsed when no Authorization header present`() {
         // Given
         val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
         val principal = createApiPrincipal(clientId = "client-123")
@@ -181,13 +180,13 @@ class ScopeAuthorizationFilterTest {
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn(null)
 
         // When/Then
-        assertThrows<ForbiddenException> {
+        assertThrows<UnauthorizedException> {
             scopeFilter.filter(mockRequestContext)
         }
     }
 
     @Test
-    fun `should throw ForbiddenException when Authorization header has wrong format`() {
+    fun `should throw Unauthorised when Authorization header has wrong format`() {
         // Given
         val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
         val principal = createApiPrincipal(clientId = "client-123")
@@ -197,13 +196,13 @@ class ScopeAuthorizationFilterTest {
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Basic dXNlcjpwYXNz")
 
         // When/Then
-        assertThrows<ForbiddenException> {
+        assertThrows<UnauthorizedException> {
             scopeFilter.filter(mockRequestContext)
         }
     }
 
     @Test
-    fun `should throw ForbiddenException when token is malformed`() {
+    fun `should throw Unauthorised when token is malformed`() {
         // Given
         val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
         val principal = createApiPrincipal(clientId = "client-123")
@@ -213,7 +212,7 @@ class ScopeAuthorizationFilterTest {
         whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer malformed.token")
 
         // When/Then
-        assertThrows<ForbiddenException> {
+        assertThrows<UnauthorizedException> {
             scopeFilter.filter(mockRequestContext)
         }
     }
@@ -258,11 +257,10 @@ class ScopeAuthorizationFilterTest {
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
 
         // When/Then
-        val exception = assertThrows<ApiException> {
+        val exception = assertThrows<ForbiddenException> {
             scopeFilter.filter(mockRequestContext)
         }
-        exception.message shouldContain "not allowed access"
-        exception.message shouldContain "Use tokens issues by a valid API Key"
+        exception.message?.shouldBeEqual("Access denied: Endpoint only accessible with API Key issued tokens")
     }
 
     @Test
@@ -275,10 +273,10 @@ class ScopeAuthorizationFilterTest {
         whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
 
         // When/Then
-        val exception = assertThrows<ApiException> {
+        val exception = assertThrows<ForbiddenException> {
             scopeFilter.filter(mockRequestContext)
         }
-        exception.message shouldContain "not allowed access"
+        exception.message shouldContain "Access denied: Endpoint only accessible with API Key issued tokens"
     }
 
     @Test
