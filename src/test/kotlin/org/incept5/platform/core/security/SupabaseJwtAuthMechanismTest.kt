@@ -136,12 +136,12 @@ class SupabaseJwtAuthMechanismTest {
 
         val principal = identity.principal
         principal.shouldBeInstanceOf<ApiPrincipal>()
-        principal.subject shouldBe SupabaseJwtAuthMechanism.SERVICE_ROLE_USER_ID.toString()
-        principal.userRole shouldBe UserRole.platform_admin
+        principal.subject shouldBe "service-role-user"
+        principal.userRole shouldBe UserRole.service_role
         principal.entityType shouldBe null
         principal.entityId shouldBe null
 
-        identity.hasRole(UserRole.platform_admin.name) shouldBe true
+        identity.hasRole(UserRole.service_role.name) shouldBe true
         verify(mockJwtValidator).validateToken(token)
     }
 

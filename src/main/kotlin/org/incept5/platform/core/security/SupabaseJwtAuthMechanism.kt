@@ -5,21 +5,18 @@ import io.quarkus.security.identity.IdentityProviderManager
 import io.quarkus.security.identity.SecurityIdentity
 import io.quarkus.security.identity.request.AuthenticationRequest
 import io.quarkus.security.runtime.QuarkusSecurityIdentity
-import io.smallrye.mutiny.Uni
-import jakarta.enterprise.context.ApplicationScoped
-import jakarta.ws.rs.core.SecurityContext
-import org.incept5.platform.core.model.UserRole
-import java.security.Principal
-import jakarta.ws.rs.core.HttpHeaders
-import io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism
 import io.quarkus.vertx.http.runtime.security.ChallengeData
+import io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism
+import io.smallrye.mutiny.Uni
 import io.vertx.ext.web.RoutingContext
 import jakarta.annotation.Priority
+import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import jakarta.ws.rs.Priorities
+import jakarta.ws.rs.core.HttpHeaders
+import jakarta.ws.rs.core.SecurityContext
 import org.jboss.logging.Logger
-import java.util.UUID
-import com.auth0.jwt.JWT
+import java.security.Principal
 
 @ApplicationScoped
 @Priority(Priorities.AUTHENTICATION-1) // <-- DO NOT REMOVE THIS LINE
@@ -27,10 +24,6 @@ class SupabaseJwtAuthMechanism @Inject constructor(
     private val jwtValidator: DualJwtValidator
 ) : HttpAuthenticationMechanism {
     private val log = Logger.getLogger(SupabaseJwtAuthMechanism::class.java)
-
-    companion object {
-        val SERVICE_ROLE_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000000")
-    }
 
     override fun authenticate(
         context: RoutingContext,
@@ -58,34 +51,11 @@ class SupabaseJwtAuthMechanism @Inject constructor(
 
             log.debug("Valid token received with Role: ${validToken.userRole?.name}")
 
-            val role = validToken.userRole
-
-            if (role == UserRole.service_role) {
-                createServiceRoleIdentity()
-            } else {
-                createUserIdentity(validToken)
-            }
+            createUserIdentity(validToken)
         } catch (e: Exception) {
             log.warn("Authentication failed: ${e.message}", e)
             Uni.createFrom().nullItem()
         }
-    }
-
-    private fun createServiceRoleIdentity(): Uni<SecurityIdentity> {
-        val principal = ApiPrincipal(
-            subject = SERVICE_ROLE_USER_ID.toString(),
-            userRole = UserRole.platform_admin
-        )
-        val securityContext = SupabaseSecurityContext(principal)
-
-        log.debug("Service role authentication successful")
-
-        return Uni.createFrom().item(
-            QuarkusSecurityIdentity.builder()
-                .setPrincipal(securityContext.userPrincipal)
-                .addRole(UserRole.platform_admin.name)
-                .build()
-        )
     }
 
     private fun createUserIdentity(validationResult: TokenValidationResult): Uni<SecurityIdentity> {
