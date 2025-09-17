@@ -184,7 +184,7 @@ class DualJwtValidatorTest {
         val exception = shouldThrow<UnknownTokenException> {
             dualJwtValidator.validateToken(invalidToken)
         }
-        exception.message shouldBe "Invalid token format"
+        exception.message shouldBe "Invalid token format: The input is not a valid base 64 encoded string."
     }
 
     @Test
