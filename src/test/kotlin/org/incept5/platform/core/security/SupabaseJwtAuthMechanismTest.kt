@@ -14,6 +14,7 @@ import org.mockito.kotlin.*
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import org.junit.jupiter.api.assertThrows
 
 class SupabaseJwtAuthMechanismTest {
 
@@ -243,7 +244,7 @@ class SupabaseJwtAuthMechanismTest {
     }
 
     @Test
-    fun `should return null when token validation fails`() {
+    fun `should throw UnknownTokenException when token validation fails`() {
         // Given
         val token = "invalid.jwt.token"
         whenever(mockHttpRequest.path()).thenReturn("/api/v1/test")
@@ -251,10 +252,11 @@ class SupabaseJwtAuthMechanismTest {
         whenever(mockJwtValidator.validateToken(token)).thenThrow(UnknownTokenException("Invalid token"))
 
         // When
-        val result = authMechanism.authenticate(mockRoutingContext, mockIdentityProviderManager)
+        assertThrows<UnknownTokenException> {
+            authMechanism.authenticate(mockRoutingContext, mockIdentityProviderManager)
+        }
 
         // Then
-        result.await().indefinitely() shouldBe null
         verify(mockJwtValidator).validateToken(token)
     }
 

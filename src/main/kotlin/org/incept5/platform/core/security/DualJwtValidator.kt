@@ -45,8 +45,6 @@ class DualJwtValidator(
             return when (tokenSource) {
                 TokenSource.SUPABASE -> validateSupabaseToken(token)
                 TokenSource.PLATFORM -> validatePlatformToken(token)
-                // We should never reach here since detectTokenSource now throws an exception for UNKNOWN
-                else -> throw UnknownTokenException("Unknown token source")
             }
         } catch (e: UnknownTokenException) {
             throw e // Rethrow UnknownTokenException
