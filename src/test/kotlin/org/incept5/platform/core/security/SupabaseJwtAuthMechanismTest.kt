@@ -244,7 +244,7 @@ class SupabaseJwtAuthMechanismTest {
     }
 
     @Test
-    fun `should throw UnknownTokenException when token validation fails`() {
+    fun `should return null when token validation fails`() {
         // Given
         val token = "invalid.jwt.token"
         whenever(mockHttpRequest.path()).thenReturn("/api/v1/test")
@@ -252,11 +252,10 @@ class SupabaseJwtAuthMechanismTest {
         whenever(mockJwtValidator.validateToken(token)).thenThrow(UnknownTokenException("Invalid token"))
 
         // When
-        assertThrows<UnknownTokenException> {
-            authMechanism.authenticate(mockRoutingContext, mockIdentityProviderManager)
-        }
+        val result = authMechanism.authenticate(mockRoutingContext, mockIdentityProviderManager)
 
         // Then
+        result.await().indefinitely() shouldBe null
         verify(mockJwtValidator).validateToken(token)
     }
 
