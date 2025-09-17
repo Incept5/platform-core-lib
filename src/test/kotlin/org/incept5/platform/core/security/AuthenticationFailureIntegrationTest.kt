@@ -63,8 +63,8 @@ class AuthenticationFailureIntegrationTest {
         // Then
         result.await().indefinitely() shouldBe null
         
-        // Verify that the context was failed with the UnknownTokenException
-        verify(mockRoutingContext).fail(expectedException)
+        // Verify that the context was failed with 500 status and the UnknownTokenException
+        verify(mockRoutingContext).fail(500, expectedException)
         
         // Verify that the failure handler would process this as a custom error
         expectedException.message shouldContain "Invalid Supabase token"
@@ -87,7 +87,7 @@ class AuthenticationFailureIntegrationTest {
 
         // Then
         result.await().indefinitely() shouldBe null
-        verify(mockRoutingContext).fail(expectedException)
+        verify(mockRoutingContext).fail(500, expectedException)
         
         // Verify error structure that CustomAuthenticationFailureHandler would use
         expectedException.message shouldContain "Invalid token format"
@@ -110,7 +110,7 @@ class AuthenticationFailureIntegrationTest {
 
         // Then
         result.await().indefinitely() shouldBe null
-        verify(mockRoutingContext).fail(expectedException)
+        verify(mockRoutingContext).fail(500, expectedException)
         
         // Verify error structure
         expectedException.message shouldContain "Unknown token issuer"
@@ -133,7 +133,7 @@ class AuthenticationFailureIntegrationTest {
 
         // Then
         result.await().indefinitely() shouldBe null
-        verify(mockRoutingContext).fail(expectedException)
+        verify(mockRoutingContext).fail(500, expectedException)
         
         // Verify error structure
         expectedException.message shouldContain "Invalid Supabase token"
@@ -233,8 +233,8 @@ class AuthenticationFailureIntegrationTest {
         // Then
         result.await().indefinitely() shouldBe null
         
-        // Verify that the context was failed with a 401 status (generic error handling)
-        verify(mockRoutingContext).fail(401)
+        // Verify that the context was failed with 500 status and the exception (generic error handling)
+        verify(mockRoutingContext).fail(500, unexpectedException)
     }
 
     @Test

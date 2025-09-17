@@ -54,13 +54,23 @@ class SupabaseJwtAuthMechanism @Inject constructor(
             createUserIdentity(validToken)
         } catch (e: UnknownTokenException) {
             log.warn("Unknown token exception: ${e.message}")
-            // Fail the routing context with the exception
-            context.fail(e)
+            // Fail the routing context with 500 status so the error handler can catch it and convert to 401
+            context.fail(500, e)
+            Uni.createFrom().nullItem()
+        } catch (e: com.auth0.jwt.exceptions.JWTDecodeException) {
+            log.warn("JWT decode failed: ${e.message}")
+            // Fail with 500 and the actual JWT exception so our handler can catch it
+            context.fail(500, e)
+            Uni.createFrom().nullItem()
+        } catch (e: com.auth0.jwt.exceptions.JWTVerificationException) {
+            log.warn("JWT verification failed: ${e.message}")
+            // Fail with 500 and the actual JWT exception so our handler can catch it
+            context.fail(500, e)
             Uni.createFrom().nullItem()
         } catch (e: Exception) {
             log.warn("Authentication failed: ${e.message}", e)
-            // You can either fail with the exception or with a status code
-            context.fail(401)
+            // For other exceptions, fail with 500 and let the error handler decide
+            context.fail(500, e)
             Uni.createFrom().nullItem()
         }
     }

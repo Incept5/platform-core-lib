@@ -70,9 +70,12 @@ class DualJwtValidator(
             }
         } catch (e: UnknownTokenException) {
             throw e // Rethrow if it's already our custom exception
+        } catch (e: com.auth0.jwt.exceptions.JWTDecodeException) {
+            log.error("Failed to decode token: ${e.message}")
+            throw UnknownTokenException("Invalid token format: ${e.message}", e)
         } catch (e: Exception) {
             log.error("Failed to decode token", e)
-            throw UnknownTokenException("Invalid token format", e)
+            throw UnknownTokenException("Invalid token format: ${e.message ?: "Unknown error"}", e)
         }
     }
 
@@ -84,10 +87,10 @@ class DualJwtValidator(
                 .build()
                 .verify(token)
 
-            val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
+            val subject = jwt.subject ?: throw com.auth0.jwt.exceptions.JWTVerificationException("No subject claim")
 
             val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.valueOf(it) }
-                ?: throw JWTVerificationException("Invalid role")
+                ?: throw com.auth0.jwt.exceptions.JWTVerificationException("Invalid role")
 
 
             // Handle service_role tokens specially
@@ -126,10 +129,15 @@ class DualJwtValidator(
                 clientId = null,
                 tokenSource = TokenSource.SUPABASE
             )
+        } catch (e: com.auth0.jwt.exceptions.JWTVerificationException) {
+            log.warn("Supabase token verification failed: ${e.message}")
+            throw UnknownTokenException("Invalid Supabase token: ${e.message}", e)
+        } catch (e: com.auth0.jwt.exceptions.JWTDecodeException) {
+            log.warn("Supabase token decode failed: ${e.message}")
+            throw UnknownTokenException("Invalid Supabase token format: ${e.message}", e)
         } catch (e: Exception) {
             log.warn("Supabase token validation failed", e)
-            // We'll use dummy values for subject and userRole since we're throwing an exception instead
-            throw UnknownTokenException("Invalid Supabase token: ${e.message}", e)
+            throw UnknownTokenException("Invalid Supabase token: ${e.message ?: "Unknown error"}", e)
         }
     }
 
@@ -141,9 +149,9 @@ class DualJwtValidator(
                 .build()
                 .verify(token)
 
-            val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
+            val subject = jwt.subject ?: throw com.auth0.jwt.exceptions.JWTVerificationException("No subject claim")
             val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.valueOf(it) }
-                ?: throw JWTVerificationException("Invalid role")
+                ?: throw com.auth0.jwt.exceptions.JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
             val entityType = appMetadata?.get("entity_type")?.toString()?.let { EntityType.valueOf(it) }
@@ -164,9 +172,15 @@ class DualJwtValidator(
                 clientId = clientId,
                 tokenSource = TokenSource.PLATFORM
             )
+        } catch (e: com.auth0.jwt.exceptions.JWTVerificationException) {
+            log.warn("Platform token verification failed: ${e.message}")
+            throw UnknownTokenException("Invalid Platform token: ${e.message}", e)
+        } catch (e: com.auth0.jwt.exceptions.JWTDecodeException) {
+            log.warn("Platform token decode failed: ${e.message}")
+            throw UnknownTokenException("Invalid Platform token format: ${e.message}", e)
         } catch (e: Exception) {
             log.warn("Platform token validation failed", e)
-            throw UnknownTokenException("Invalid Platform token: ${e.message}", e)
+            throw UnknownTokenException("Invalid Platform token: ${e.message ?: "Unknown error"}", e)
         }
     }
 

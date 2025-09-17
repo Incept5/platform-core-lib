@@ -25,26 +25,40 @@ class CustomAuthenticationFailureHandler {
     lateinit var router: Router
 
     fun init(@Observes event: StartupEvent) {
-        // Register failure handler for 401 status code
+        // Register failure handler for 401 status code (authentication failures)
         router.errorHandler(401, Handler { context ->
             handleAuthenticationFailure(context)
         })
 
-        // You can also register for specific exception types
+        // Register failure handler for 500 status code (server errors including auth exceptions)
         router.errorHandler(500) { context ->
             val failure = context.failure()
+            log.debug("Handling 500 error with failure: ${failure?.javaClass?.simpleName}: ${failure?.message}")
             when (failure) {
                 is UnknownTokenException -> {
-                    log.debug("Handling UnknownTokenException: ${failure.message}")
+                    log.debug("Converting UnknownTokenException to 401: ${failure.message}")
                     sendCustomErrorResponse(context, failure, 401)
                 }
-                // Add other custom exceptions here
+                // Handle other JWT/authentication related exceptions that might cause 500s
+                is com.auth0.jwt.exceptions.JWTDecodeException -> {
+                    log.debug("Converting JWTDecodeException to 401: ${failure.message}")
+                    val wrappedException = UnknownTokenException("Invalid token format: ${failure.message}", failure)
+                    sendCustomErrorResponse(context, wrappedException, 401)
+                }
+                is com.auth0.jwt.exceptions.JWTVerificationException -> {
+                    log.debug("Converting JWTVerificationException to 401: ${failure.message}")
+                    val wrappedException = UnknownTokenException("Token verification failed: ${failure.message}", failure)
+                    sendCustomErrorResponse(context, wrappedException, 401)
+                }
                 else -> {
+                    log.debug("Letting default handler process: ${failure?.javaClass?.simpleName}")
                     // Let default handler take over
                     context.next()
                 }
             }
         }
+        
+        log.info("CustomAuthenticationFailureHandler initialized with error handlers for 401 and 500 status codes")
     }
 
     private fun handleAuthenticationFailure(context: RoutingContext) {
