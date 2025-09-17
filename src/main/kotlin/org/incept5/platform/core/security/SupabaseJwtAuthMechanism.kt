@@ -52,6 +52,8 @@ class SupabaseJwtAuthMechanism @Inject constructor(
             log.debug("Valid token received with Role: ${validToken.userRole?.name}")
 
             createUserIdentity(validToken)
+        } catch (e: UnknownTokenException) {
+            throw e //let the error-lib handle the exception
         } catch (e: Exception) {
             log.warn("Authentication failed: ${e.message}", e)
             Uni.createFrom().nullItem()
