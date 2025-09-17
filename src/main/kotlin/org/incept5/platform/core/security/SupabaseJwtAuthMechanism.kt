@@ -53,9 +53,14 @@ class SupabaseJwtAuthMechanism @Inject constructor(
 
             createUserIdentity(validToken)
         } catch (e: UnknownTokenException) {
-            throw e //let the error-lib handle the exception
+            log.warn("Unknown token exception: ${e.message}")
+            // Fail the routing context with the exception
+            context.fail(e)
+            Uni.createFrom().nullItem()
         } catch (e: Exception) {
             log.warn("Authentication failed: ${e.message}", e)
+            // You can either fail with the exception or with a status code
+            context.fail(401)
             Uni.createFrom().nullItem()
         }
     }
