@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.*
+import java.security.KeyPairGenerator
+import java.security.interfaces.RSAPrivateKey
 
 class DualJwtValidatorTest {
 
@@ -378,5 +380,44 @@ class DualJwtValidatorTest {
         }
 
         return tokenBuilder.sign(algorithm)
+    }
+
+    @Test
+    fun `should validate RS256 Platform token when RSA enabled`() {
+        // Given RSA key pair
+        val kpg = KeyPairGenerator.getInstance("RSA")
+        kpg.initialize(2048)
+        val kp = kpg.generateKeyPair()
+        val privateKey = kp.private as RSAPrivateKey
+        val privateKeyBase64 = Base64.getEncoder().encodeToString(privateKey.encoded)
+
+        // Validator configured for RSA verification
+        val rsaValidator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            baseApiUrl = baseApiUrl,
+            rsaEnabled = true,
+            rsaPrivateKey = privateKeyBase64,
+            supabaseJwtEnabled = false
+        )
+
+        // RS256-signed platform token
+        val token = JWT.create()
+            .withSubject("client-rs256")
+            .withIssuer("$baseApiUrl$platformOauthPath")
+            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("scopes", listOf("payment:read"))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+            .sign(Algorithm.RSA256(null, privateKey))
+
+        // When
+        val result = rsaValidator.validateToken(token)
+
+        // Then
+        result.isValid shouldBe true
+        result.subject shouldBe "client-rs256"
+        result.userRole shouldBe UserRole.entity_admin
+        result.clientId shouldBe "client-rs256"
     }
 }
