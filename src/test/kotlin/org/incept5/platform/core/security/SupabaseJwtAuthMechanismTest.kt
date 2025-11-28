@@ -181,6 +181,43 @@ class SupabaseJwtAuthMechanismTest {
     }
 
     @Test
+    fun `should authenticate RS256 platform token with clientId`() {
+        // Given
+        val token = "platform.rs256.token"
+        val validationResult = TokenValidationResult.valid(
+            subject = "client-789",
+            userRole = UserRole.entity_admin,
+            entityType = EntityType.partner,
+            entityId = "partner-789",
+            scopes = listOf("payment:read"),
+            clientId = "client-789",
+            tokenSource = TokenSource.PLATFORM
+        )
+
+        whenever(mockHttpRequest.path()).thenReturn("/api/v1/test")
+        whenever(mockHttpRequest.getHeader("Authorization")).thenReturn("Bearer $token")
+        whenever(mockJwtValidator.validateToken(token)).thenReturn(validationResult)
+
+        // When
+        val result = authMechanism.authenticate(mockRoutingContext, mockIdentityProviderManager)
+
+        // Then
+        val identity = result.await().indefinitely()
+        identity shouldNotBe null
+
+        val principal = identity.principal
+        principal.shouldBeInstanceOf<ApiPrincipal>()
+        principal.subject shouldBe "client-789"
+        principal.userRole shouldBe UserRole.entity_admin
+        principal.entityType shouldBe EntityType.partner
+        principal.entityId shouldBe "partner-789"
+        principal.clientId shouldBe "client-789"
+
+        identity.hasRole(UserRole.entity_admin.name) shouldBe true
+        verify(mockJwtValidator).validateToken(token)
+    }
+
+    @Test
     fun `should authenticate entity admin token`() {
         // Given
         val token = "entity.admin.token"

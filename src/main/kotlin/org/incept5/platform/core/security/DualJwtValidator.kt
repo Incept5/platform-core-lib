@@ -24,17 +24,37 @@ class UnknownTokenException(message: String, cause: Throwable? = null) :
 class DualJwtValidator(
     @ConfigProperty(name = "supabase.jwt.secret")
     private val jwtSecret: String,
+    @ConfigProperty(name = "supabase.jwt.enabled", defaultValue = "false")
+    private val supabaseJwtEnabled: Boolean = true,
     @ConfigProperty(name = "api.base.url")
     private val baseApiUrl: String,
     @ConfigProperty(name = "auth.supabase.path", defaultValue = "/auth/v1")
     private val supabaseAuthPath: String,
     @ConfigProperty(name = "auth.platform.oauth.path", defaultValue = "/api/v1/oauth/token")
     private val platformOauthPath: String,
+    @ConfigProperty(name = "rsa-jwt.enabled", defaultValue = "true")
+    private val rsaEnabled: Boolean = true,
+    @ConfigProperty(name = "rsa-jwt.private-key", defaultValue = "")
+    private val rsaPrivateKey: String = ""
 ) {
     private val log = Logger.getLogger(DualJwtValidator::class.java)
 
-    private val supabaseAlgorithm: Algorithm by lazy {
-        Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+    private fun requireSupabaseAlgorithm(): Algorithm {
+        if (!supabaseJwtEnabled) {
+            throw UnknownTokenException("HS256 validation disabled by configuration")
+        }
+        return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+    }
+
+    private fun requirePlatformAlgorithm(): Algorithm {
+        if (rsaEnabled && rsaPrivateKey.isNotBlank()) {
+            val publicKey = derivePublicKeyFromPrivate(rsaPrivateKey)
+            return Algorithm.RSA256(publicKey, null)
+        }
+        if (supabaseJwtEnabled) {
+            return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+        }
+        throw UnknownTokenException("No enabled algorithm for platform token validation")
     }
 
 
@@ -80,7 +100,7 @@ class DualJwtValidator(
 
     private fun validateSupabaseToken(token: String): TokenValidationResult {
         try {
-            val jwt = JWT.require(supabaseAlgorithm)
+            val jwt = JWT.require(requireSupabaseAlgorithm())
                 .withClaimPresence("role")
                 .withIssuer("$baseApiUrl$supabaseAuthPath")
                 .build()
@@ -137,7 +157,7 @@ class DualJwtValidator(
 
     private fun validatePlatformToken(token: String): TokenValidationResult {
         try {
-            val jwt = JWT.require(supabaseAlgorithm)
+            val jwt = JWT.require(requirePlatformAlgorithm())
                 .withClaimPresence("role")
                 .withIssuer("$baseApiUrl$platformOauthPath")
                 .build()
@@ -206,4 +226,26 @@ class DualJwtValidator(
 
     fun getEntityType(token: String): EntityType? = validateToken(token).entityType
     fun getEntityId(token: String): String? = validateToken(token).entityId
+
+    private fun derivePublicKeyFromPrivate(base64: String): java.security.interfaces.RSAPublicKey {
+        val raw = Base64.getDecoder().decode(base64)
+        val content = String(raw)
+        val keyBytes = if (content.contains("BEGIN")) {
+            val cleaned = content
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replace("\n", "")
+                .replace("\r", "")
+            Base64.getDecoder().decode(cleaned)
+        } else raw
+        val spec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+        val kf = java.security.KeyFactory.getInstance("RSA")
+        val privateKey = kf.generatePrivate(spec)
+        val crt = privateKey as? java.security.interfaces.RSAPrivateCrtKey
+        val pubSpec = java.security.spec.RSAPublicKeySpec(
+            crt?.modulus ?: (privateKey as java.security.interfaces.RSAPrivateKey).modulus,
+            crt?.publicExponent ?: java.math.BigInteger.valueOf(65537L)
+        )
+        return kf.generatePublic(pubSpec) as java.security.interfaces.RSAPublicKey
+    }
 }
