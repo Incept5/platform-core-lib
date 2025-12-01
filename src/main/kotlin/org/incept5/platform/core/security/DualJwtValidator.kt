@@ -5,6 +5,7 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTVerificationException
 import jakarta.enterprise.context.ApplicationScoped
+import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.incept5.platform.core.error.ApiException
 import org.incept5.platform.core.model.UserRole
@@ -21,7 +22,7 @@ class UnknownTokenException(message: String, cause: Throwable? = null) :
     ApiException(message, ErrorCategory.AUTHORIZATION, cause)
 
 @ApplicationScoped
-class DualJwtValidator(
+class DualJwtValidator @Inject constructor(
     @ConfigProperty(name = "supabase.jwt.secret")
     private val jwtSecret: String,
     @ConfigProperty(name = "supabase.jwt.enabled", defaultValue = "false")
