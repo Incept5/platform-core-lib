@@ -139,7 +139,7 @@ class DualJwtValidatorTest {
         )
 
         // When
-        val v = DualJwtValidator(
+        val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
@@ -148,7 +148,7 @@ class DualJwtValidatorTest {
             rsaPrivateKey = "",
             hmacFallbackEnabled = true
         )
-        val result = v.validateToken(token)
+        val result = validator.validateToken(token)
 
         // Then
         result.isValid shouldBe true
@@ -172,7 +172,7 @@ class DualJwtValidatorTest {
         )
 
         // When
-        val v = DualJwtValidator(
+        val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
@@ -181,7 +181,7 @@ class DualJwtValidatorTest {
             rsaPrivateKey = "",
             hmacFallbackEnabled = true
         )
-        val result = v.validateToken(token)
+        val result = validator.validateToken(token)
 
         // Then
         result.isValid shouldBe true
@@ -337,7 +337,7 @@ class DualJwtValidatorTest {
         )
 
         // When
-        val v = DualJwtValidator(
+        val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
@@ -346,7 +346,7 @@ class DualJwtValidatorTest {
             rsaPrivateKey = "",
             hmacFallbackEnabled = true
         )
-        val entityType = v.getEntityType(token)
+        val entityType = validator.getEntityType(token)
 
         // Then
         entityType shouldBe null
@@ -450,7 +450,7 @@ class DualJwtValidatorTest {
 
     @Test
     fun `should validate HS256 Platform token when HMAC fallback enabled`() {
-        val v = DualJwtValidator(
+        val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
@@ -468,7 +468,7 @@ class DualJwtValidatorTest {
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
-        val result = v.validateToken(token)
+        val result = validator.validateToken(token)
         result.isValid shouldBe true
         result.subject shouldBe "client-hs256"
         result.userRole shouldBe UserRole.entity_admin
@@ -477,7 +477,7 @@ class DualJwtValidatorTest {
 
     @Test
     fun `should fail HS256 Platform token when HMAC fallback disabled`() {
-        val v = DualJwtValidator(
+        val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
@@ -496,7 +496,7 @@ class DualJwtValidatorTest {
             .sign(algorithm)
 
         val ex = shouldThrow<UnknownTokenException> {
-            v.validateToken(token)
+            validator.validateToken(token)
         }
         ex.message?.contains("No enabled algorithm for platform token validation") shouldBe true
     }

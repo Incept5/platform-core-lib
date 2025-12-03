@@ -49,7 +49,6 @@ class DualJwtValidator @Inject constructor(
             val publicKey = derivePublicKeyFromPrivate(rsaPrivateKey)
             return Algorithm.RSA256(publicKey, null)
         } else {
-            log.info("HMAC Fallback Enabled: ${hmacFallbackEnabled}")
             if (hmacFallbackEnabled) {
                 return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
             }
@@ -80,8 +79,6 @@ class DualJwtValidator @Inject constructor(
         try {
             val decoded = JWT.decode(token)
             val issuer = decoded.issuer
-
-            log.info("Token issuer: $issuer")
 
             return when {
                 issuer == "$baseApiUrl$supabaseAuthPath" -> TokenSource.SUPABASE
