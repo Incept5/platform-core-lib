@@ -139,7 +139,16 @@ class DualJwtValidatorTest {
         )
 
         // When
-        val result = dualJwtValidator.validateToken(token)
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPrivateKey = "",
+            hmacFallbackEnabled = true
+        )
+        val result = validator.validateToken(token)
 
         // Then
         result.isValid shouldBe true
@@ -163,7 +172,16 @@ class DualJwtValidatorTest {
         )
 
         // When
-        val result = dualJwtValidator.validateToken(token)
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPrivateKey = "",
+            hmacFallbackEnabled = true
+        )
+        val result = validator.validateToken(token)
 
         // Then
         result.isValid shouldBe true
@@ -319,7 +337,16 @@ class DualJwtValidatorTest {
         )
 
         // When
-        val entityType = dualJwtValidator.getEntityType(token)
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPrivateKey = "",
+            hmacFallbackEnabled = true
+        )
+        val entityType = validator.getEntityType(token)
 
         // Then
         entityType shouldBe null
@@ -399,7 +426,7 @@ class DualJwtValidatorTest {
             baseApiUrl = baseApiUrl,
             rsaEnabled = true,
             rsaPrivateKey = privateKeyBase64,
-            supabaseJwtEnabled = false
+            hmacFallbackEnabled = false
         )
 
         // RS256-signed platform token
@@ -419,5 +446,58 @@ class DualJwtValidatorTest {
         result.subject shouldBe "client-rs256"
         result.userRole shouldBe UserRole.entity_admin
         result.clientId shouldBe "client-rs256"
+    }
+
+    @Test
+    fun `should validate HS256 Platform token when HMAC fallback enabled`() {
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPrivateKey = "",
+            hmacFallbackEnabled = true
+        )
+
+        val token = JWT.create()
+            .withSubject("client-hs256")
+            .withIssuer("$baseApiUrl$platformOauthPath")
+            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("scopes", listOf("payment:read"))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+            .sign(algorithm)
+
+        val result = validator.validateToken(token)
+        result.isValid shouldBe true
+        result.subject shouldBe "client-hs256"
+        result.userRole shouldBe UserRole.entity_admin
+        result.clientId shouldBe "client-hs256"
+    }
+
+    @Test
+    fun `should fail HS256 Platform token when HMAC fallback disabled`() {
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPrivateKey = "",
+            hmacFallbackEnabled = false
+        )
+
+        val token = JWT.create()
+            .withSubject("client-hs256-no-fallback")
+            .withIssuer("$baseApiUrl$platformOauthPath")
+            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("scopes", listOf("payment:read"))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+            .sign(algorithm)
+
+        val ex = shouldThrow<UnknownTokenException> {
+            validator.validateToken(token)
+        }
+        ex.message?.contains("No enabled algorithm for platform token validation") shouldBe true
     }
 }

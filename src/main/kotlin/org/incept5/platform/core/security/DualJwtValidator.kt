@@ -25,8 +25,8 @@ class UnknownTokenException(message: String, cause: Throwable? = null) :
 class DualJwtValidator @Inject constructor(
     @ConfigProperty(name = "supabase.jwt.secret")
     private val jwtSecret: String,
-    @ConfigProperty(name = "supabase.jwt.enabled", defaultValue = "false")
-    private val supabaseJwtEnabled: Boolean = true,
+    @ConfigProperty(name = "rsa-jwt.hmac-fallback.enabled", defaultValue = "false")
+    private val hmacFallbackEnabled: Boolean = false,
     @ConfigProperty(name = "api.base.url")
     private val baseApiUrl: String,
     @ConfigProperty(name = "auth.supabase.path", defaultValue = "/auth/v1")
@@ -41,9 +41,6 @@ class DualJwtValidator @Inject constructor(
     private val log = Logger.getLogger(DualJwtValidator::class.java)
 
     private fun requireSupabaseAlgorithm(): Algorithm {
-        if (!supabaseJwtEnabled) {
-            throw UnknownTokenException("HS256 validation disabled by configuration")
-        }
         return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
     }
 
@@ -51,9 +48,10 @@ class DualJwtValidator @Inject constructor(
         if (rsaEnabled && rsaPrivateKey.isNotBlank()) {
             val publicKey = derivePublicKeyFromPrivate(rsaPrivateKey)
             return Algorithm.RSA256(publicKey, null)
-        }
-        if (supabaseJwtEnabled) {
-            return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+        } else {
+            if (hmacFallbackEnabled) {
+                return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+            }
         }
         throw UnknownTokenException("No enabled algorithm for platform token validation")
     }
