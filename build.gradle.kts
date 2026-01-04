@@ -97,6 +97,7 @@ dependencies {
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.wiremock)
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("org.assertj:assertj-core:3.24.2")
     testImplementation("ch.qos.logback:logback-classic:1.4.14")
