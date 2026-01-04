@@ -189,12 +189,12 @@ This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates 
 
 ### JWT Validation Configuration
 
-The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. It supports both RSA (recommended) and HMAC signature verification.
+The `DualJwtValidator` supports validation of tokens from two sources: Supabase (HMAC) and Platform OAuth (RSA). It uses **standard MicroProfile JWT configuration** for RSA verification.
 
 #### Required Properties
 
 ```yaml
-# JWT secret for HMAC token validation (base64 encoded)
+# JWT secret for Supabase HMAC token validation (base64 encoded)
 supabase:
   jwt:
     secret: your-base64-encoded-jwt-secret
@@ -205,28 +205,34 @@ api:
     url: https://your-api-domain.com
 ```
 
-#### RSA Verification (Recommended for Platform Tokens)
+#### RSA Verification (Standard MicroProfile JWT)
+
+For Platform OAuth tokens, use **standard Quarkus MicroProfile JWT configuration**:
 
 ```yaml
-# Enable RSA verification (default: true)
-rsa-jwt:
-  enabled: true
-  
-  # Option 1: Use JWKS endpoint (recommended for production)
-  jwks-url: https://your-api-domain.com/.well-known/jwks.json
-  
-  # Option 2: Use explicit public key (PEM format, base64 encoded)
-  public-key: your-base64-encoded-public-key
-  
-  # HMAC fallback for platforms not yet migrated (default: false)
-  hmac-fallback:
-    enabled: false
+# Standard MicroProfile JWT configuration
+mp:
+  jwt:
+    verify:
+      # Option 1: JWKS endpoint (recommended for production)
+      publickey:
+        location: https://your-api-domain.com/.well-known/jwks.json
+      
+      # Option 2: Explicit public key (PEM format)
+      # publickey: |
+      #   -----BEGIN PUBLIC KEY-----
+      #   MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+      #   -----END PUBLIC KEY-----
+      
+      # Option 3: File path to public key
+      # publickey:
+      #   location: /path/to/public-key.pem
 ```
 
 **Configuration Priority:**
-1. **JWKS URL** (highest priority) - Fetches public keys from a JWKS endpoint
-2. **Explicit Public Key** - Uses a configured RSA public key
-3. **HMAC Fallback** (lowest priority) - Falls back to HMAC256 if enabled
+1. **JWKS URL** (highest priority) - HTTP(S) URL in `mp.jwt.verify.publickey.location`
+2. **File Path** - File path in `mp.jwt.verify.publickey.location`
+3. **Inline Key** (lowest priority) - PEM key in `mp.jwt.verify.publickey`
 
 #### Optional Properties
 
@@ -269,7 +275,7 @@ Platform tokens should contain:
 
 #### Example Configurations
 
-**Production Configuration (RSA with JWKS)**
+**Production Configuration (JWKS)**
 ```yaml
 supabase:
   jwt:
@@ -279,9 +285,12 @@ api:
   base:
     url: https://api.yourcompany.com
 
-rsa-jwt:
-  enabled: true
-  jwks-url: https://api.yourcompany.com/.well-known/jwks.json
+# Standard MicroProfile JWT configuration
+mp:
+  jwt:
+    verify:
+      publickey:
+        location: https://api.yourcompany.com/.well-known/jwks.json
 
 auth:
   supabase:
@@ -291,7 +300,7 @@ auth:
       path: /api/v1/oauth/token
 ```
 
-**Migration Configuration (RSA with HMAC Fallback)**
+**Configuration with Explicit Public Key**
 ```yaml
 supabase:
   jwt:
@@ -301,11 +310,14 @@ api:
   base:
     url: https://api.yourcompany.com
 
-rsa-jwt:
-  enabled: true
-  public-key: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0K...
-  hmac-fallback:
-    enabled: true  # Allows HMAC tokens during migration
+# Standard MicroProfile JWT configuration
+mp:
+  jwt:
+    verify:
+      publickey: |
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+        -----END PUBLIC KEY-----
 
 auth:
   supabase:
@@ -315,7 +327,7 @@ auth:
       path: /api/v1/oauth/token
 ```
 
-**Legacy Configuration (HMAC Only)**
+**Configuration with Key File**
 ```yaml
 supabase:
   jwt:
@@ -325,10 +337,12 @@ api:
   base:
     url: https://api.yourcompany.com
 
-rsa-jwt:
-  enabled: false
-  hmac-fallback:
-    enabled: true
+# Standard MicroProfile JWT configuration
+mp:
+  jwt:
+    verify:
+      publickey:
+        location: /config/keys/jwt-public-key.pem
 
 auth:
   supabase:
