@@ -4,6 +4,7 @@ package org.incept5.platform.core.security
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTVerificationException
+import com.auth0.jwt.interfaces.RSAKeyProvider
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
@@ -13,6 +14,8 @@ import java.util.Base64
 import org.incept5.platform.core.model.EntityType
 import org.incept5.error.ErrorCategory
 import org.jboss.logging.Logger
+import java.security.interfaces.RSAPrivateKey
+import java.security.interfaces.RSAPublicKey
 
 /**
  * Exception thrown when a token source cannot be determined or is not recognized.
@@ -35,25 +38,57 @@ class DualJwtValidator @Inject constructor(
     private val platformOauthPath: String,
     @ConfigProperty(name = "rsa-jwt.enabled", defaultValue = "true")
     private val rsaEnabled: Boolean = true,
-    @ConfigProperty(name = "rsa-jwt.private-key", defaultValue = "")
-    private val rsaPrivateKey: String = ""
+    @ConfigProperty(name = "rsa-jwt.public-key", defaultValue = "")
+    private val rsaPublicKey: String = "",
+    @ConfigProperty(name = "rsa-jwt.jwks-url", defaultValue = "")
+    private val jwksUrl: String = ""
 ) {
     private val log = Logger.getLogger(DualJwtValidator::class.java)
+    
+    // Lazy initialization of JWKS provider to avoid fetching keys at startup
+    private val jwksProvider: JwksKeyProvider? by lazy {
+        if (jwksUrl.isNotBlank()) {
+            try {
+                log.info("Initializing JWKS provider with URL: $jwksUrl")
+                JwksKeyProvider(jwksUrl)
+            } catch (e: Exception) {
+                log.error("Failed to initialize JWKS provider", e)
+                null
+            }
+        } else {
+            null
+        }
+    }
 
     private fun requireSupabaseAlgorithm(): Algorithm {
         return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
     }
 
     private fun requirePlatformAlgorithm(): Algorithm {
-        if (rsaEnabled && rsaPrivateKey.isNotBlank()) {
-            val publicKey = derivePublicKeyFromPrivate(rsaPrivateKey)
-            return Algorithm.RSA256(publicKey, null)
-        } else {
-            if (hmacFallbackEnabled) {
-                return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+        if (rsaEnabled) {
+            // Priority 1: Use JWKS provider if configured
+            jwksProvider?.let { provider ->
+                log.debug("Using JWKS provider for RSA verification")
+                return Algorithm.RSA256(provider)
             }
+            
+            // Priority 2: Use explicit public key if provided
+            if (rsaPublicKey.isNotBlank()) {
+                log.debug("Using explicit public key for RSA verification")
+                val publicKey = parsePublicKey(rsaPublicKey)
+                return Algorithm.RSA256(publicKey, null)
+            }
+            
+            log.warn("RSA enabled but no public key or JWKS URL configured")
         }
-        throw UnknownTokenException("No enabled algorithm for platform token validation")
+        
+        // Fallback: Use HMAC if enabled
+        if (hmacFallbackEnabled) {
+            log.debug("Using HMAC256 fallback for platform token validation")
+            return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+        }
+        
+        throw UnknownTokenException("No enabled algorithm for platform token validation. Configure either rsa-jwt.public-key, rsa-jwt.jwks-url, or enable HMAC fallback.")
     }
 
 
@@ -226,25 +261,161 @@ class DualJwtValidator @Inject constructor(
     fun getEntityType(token: String): EntityType? = validateToken(token).entityType
     fun getEntityId(token: String): String? = validateToken(token).entityId
 
-    private fun derivePublicKeyFromPrivate(base64: String): java.security.interfaces.RSAPublicKey {
-        val raw = Base64.getDecoder().decode(base64)
-        val content = String(raw)
-        val keyBytes = if (content.contains("BEGIN")) {
-            val cleaned = content
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replace("\n", "")
-                .replace("\r", "")
-            Base64.getDecoder().decode(cleaned)
-        } else raw
-        val spec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
-        val kf = java.security.KeyFactory.getInstance("RSA")
-        val privateKey = kf.generatePrivate(spec)
-        val crt = privateKey as? java.security.interfaces.RSAPrivateCrtKey
-        val pubSpec = java.security.spec.RSAPublicKeySpec(
-            crt?.modulus ?: (privateKey as java.security.interfaces.RSAPrivateKey).modulus,
-            crt?.publicExponent ?: java.math.BigInteger.valueOf(65537L)
-        )
-        return kf.generatePublic(pubSpec) as java.security.interfaces.RSAPublicKey
+    /**
+     * Parse a PEM-encoded or raw base64 RSA public key.
+     * Supports both X.509 SubjectPublicKeyInfo format and raw base64.
+     */
+    private fun parsePublicKey(base64: String): RSAPublicKey {
+        try {
+            val raw = Base64.getDecoder().decode(base64)
+            val content = String(raw, Charsets.UTF_8)
+            
+            val keyBytes = if (content.contains("BEGIN")) {
+                // PEM format: strip headers and decode
+                val cleaned = content
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replace("-----BEGIN RSA PUBLIC KEY-----", "")
+                    .replace("-----END RSA PUBLIC KEY-----", "")
+                    .replace("\n", "")
+                    .replace("\r", "")
+                    .trim()
+                Base64.getDecoder().decode(cleaned)
+            } else {
+                raw
+            }
+            
+            val spec = java.security.spec.X509EncodedKeySpec(keyBytes)
+            val keyFactory = java.security.KeyFactory.getInstance("RSA")
+            return keyFactory.generatePublic(spec) as RSAPublicKey
+        } catch (e: Exception) {
+            throw UnknownTokenException("Failed to parse RSA public key: ${e.message}", e)
+        }
+    }
+}
+
+/**
+ * JWKS-based RSA Key Provider that fetches public keys from a JWKS endpoint.
+ * Implements auth0's RSAKeyProvider interface.
+ */
+open class JwksKeyProvider(private val jwksUrl: String) : RSAKeyProvider {
+    private val log = Logger.getLogger(JwksKeyProvider::class.java)
+    protected val keyCache = mutableMapOf<String, RSAPublicKey>()
+    
+    init {
+        log.info("Initializing JWKS provider with URL: $jwksUrl")
+        // Eagerly fetch keys on initialization (non-blocking)
+        try {
+            fetchKeys()
+            log.info("Successfully initialized JWKS provider with ${keyCache.size} keys")
+        } catch (e: Exception) {
+            log.warn("Failed to fetch JWKS keys on initialization. Keys will be fetched on first use.", e)
+        }
+    }
+    
+    override fun getPublicKeyById(keyId: String?): RSAPublicKey {
+        // If no key ID specified, try to return the first available key
+        if (keyId == null) {
+            return keyCache.values.firstOrNull() 
+                ?: throw UnknownTokenException("No RSA public keys available in JWKS")
+        }
+        
+        // Try cache first
+        keyCache[keyId]?.let { return it }
+        
+        // Refresh cache and try again
+        try {
+            fetchKeys()
+            keyCache[keyId]?.let { return it }
+        } catch (e: Exception) {
+            log.error("Failed to fetch JWKS keys for key ID: $keyId", e)
+        }
+        
+        throw UnknownTokenException("Public key not found for key ID: $keyId")
+    }
+    
+    override fun getPrivateKey(): RSAPrivateKey? = null
+    override fun getPrivateKeyId(): String? = null
+    
+    private fun fetchKeys() {
+        try {
+            val url = java.net.URL(jwksUrl)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            
+            val responseCode = connection.responseCode
+            if (responseCode != 200) {
+                throw UnknownTokenException("Failed to fetch JWKS: HTTP $responseCode")
+            }
+            
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            parseJwks(response)
+            
+            log.info("Successfully fetched ${keyCache.size} keys from JWKS endpoint")
+        } catch (e: Exception) {
+            log.error("Error fetching JWKS", e)
+            throw UnknownTokenException("Failed to fetch JWKS: ${e.message}", e)
+        }
+    }
+    
+    protected open fun parseJwks(json: String) {
+        // Simple JSON parsing for JWKS format
+        // Expected format: {"keys": [{"kid": "...", "n": "...", "e": "...", "kty": "RSA", "use": "sig"}]}
+        
+        try {
+            // Extract keys array from JSON
+            val keysMatch = "\"keys\"\\s*:\\s*\\[([^\\]]+)\\]".toRegex().find(json)
+                ?: throw UnknownTokenException("No 'keys' array found in JWKS")
+            
+            val keysJson = keysMatch.groupValues[1]
+            
+            // Parse each key object
+            val keyObjects = "\\{([^}]+)\\}".toRegex().findAll(keysJson)
+            
+            for (keyMatch in keyObjects) {
+                try {
+                    val keyJson = keyMatch.value
+                    
+                    // Extract required fields
+                    val kid = extractJsonField(keyJson, "kid")
+                    val n = extractJsonField(keyJson, "n")
+                    val e = extractJsonField(keyJson, "e")
+                    val kty = extractJsonField(keyJson, "kty")
+                    
+                    // Only process RSA keys for signature verification
+                    if (kty != "RSA") continue
+                    
+                    // Decode Base64URL encoded modulus and exponent
+                    val modulus = java.math.BigInteger(1, Base64.getUrlDecoder().decode(n))
+                    val exponent = java.math.BigInteger(1, Base64.getUrlDecoder().decode(e))
+                    
+                    // Create RSA public key
+                    val spec = java.security.spec.RSAPublicKeySpec(modulus, exponent)
+                    val keyFactory = java.security.KeyFactory.getInstance("RSA")
+                    val publicKey = keyFactory.generatePublic(spec) as RSAPublicKey
+                    
+                    keyCache[kid] = publicKey
+                    log.debug("Cached RSA public key with ID: $kid")
+                } catch (e: Exception) {
+                    log.warn("Failed to parse key from JWKS", e)
+                }
+            }
+            
+            if (keyCache.isEmpty()) {
+                throw UnknownTokenException("No valid RSA keys found in JWKS")
+            }
+        } catch (e: Exception) {
+            if (e is UnknownTokenException) throw e
+            throw UnknownTokenException("Failed to parse JWKS: ${e.message}", e)
+        }
+    }
+    
+    private fun extractJsonField(json: String, field: String): String {
+        val pattern = "\"$field\"\\s*:\\s*\"([^\"]+)\"".toRegex()
+        val match = pattern.find(json)
+            ?: throw UnknownTokenException("Required field '$field' not found in JWKS key")
+        return match.groupValues[1]
     }
 }

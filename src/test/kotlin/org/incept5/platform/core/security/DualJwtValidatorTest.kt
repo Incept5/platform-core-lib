@@ -145,7 +145,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPrivateKey = "",
+            rsaPublicKey = "",
+            jwksUrl = "",
             hmacFallbackEnabled = true
         )
         val result = validator.validateToken(token)
@@ -178,7 +179,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPrivateKey = "",
+            rsaPublicKey = "",
+            jwksUrl = "",
             hmacFallbackEnabled = true
         )
         val result = validator.validateToken(token)
@@ -343,7 +345,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPrivateKey = "",
+            rsaPublicKey = "",
+            jwksUrl = "",
             hmacFallbackEnabled = true
         )
         val entityType = validator.getEntityType(token)
@@ -416,16 +419,17 @@ class DualJwtValidatorTest {
         kpg.initialize(2048)
         val kp = kpg.generateKeyPair()
         val privateKey = kp.private as RSAPrivateKey
-        val privateKeyBase64 = Base64.getEncoder().encodeToString(privateKey.encoded)
-
-        // Validator configured for RSA verification
+        val publicKey = kp.public as java.security.interfaces.RSAPublicKey
+        val publicKeyBase64 = Base64.getEncoder().encodeToString(publicKey.encoded)
+        
         val rsaValidator = DualJwtValidator(
             jwtSecret = jwtSecret,
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             baseApiUrl = baseApiUrl,
             rsaEnabled = true,
-            rsaPrivateKey = privateKeyBase64,
+            rsaPublicKey = publicKeyBase64,
+            jwksUrl = "",
             hmacFallbackEnabled = false
         )
 
@@ -456,7 +460,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPrivateKey = "",
+            rsaPublicKey = "",
+            jwksUrl = "",
             hmacFallbackEnabled = true
         )
 
@@ -483,7 +488,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPrivateKey = "",
+            rsaPublicKey = "",
+            jwksUrl = "",
             hmacFallbackEnabled = false
         )
 

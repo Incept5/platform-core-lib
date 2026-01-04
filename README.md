@@ -189,12 +189,12 @@ This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates 
 
 ### JWT Validation Configuration
 
-The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. Configure the following properties in your `application.yml`:
+The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. It supports both RSA (recommended) and HMAC signature verification.
 
 #### Required Properties
 
 ```yaml
-# JWT secret for token validation (base64 encoded)
+# JWT secret for HMAC token validation (base64 encoded)
 supabase:
   jwt:
     secret: your-base64-encoded-jwt-secret
@@ -204,6 +204,29 @@ api:
   base:
     url: https://your-api-domain.com
 ```
+
+#### RSA Verification (Recommended for Platform Tokens)
+
+```yaml
+# Enable RSA verification (default: true)
+rsa-jwt:
+  enabled: true
+  
+  # Option 1: Use JWKS endpoint (recommended for production)
+  jwks-url: https://your-api-domain.com/.well-known/jwks.json
+  
+  # Option 2: Use explicit public key (PEM format, base64 encoded)
+  public-key: your-base64-encoded-public-key
+  
+  # HMAC fallback for platforms not yet migrated (default: false)
+  hmac-fallback:
+    enabled: false
+```
+
+**Configuration Priority:**
+1. **JWKS URL** (highest priority) - Fetches public keys from a JWKS endpoint
+2. **Explicit Public Key** - Uses a configured RSA public key
+3. **HMAC Fallback** (lowest priority) - Falls back to HMAC256 if enabled
 
 #### Optional Properties
 
@@ -244,9 +267,9 @@ Platform tokens should contain:
   - `entity_type`: Optional entity type
   - `entity_id`: Optional entity ID
 
-#### Example Configuration
+#### Example Configurations
 
-**application.yml**
+**Production Configuration (RSA with JWKS)**
 ```yaml
 supabase:
   jwt:
@@ -255,6 +278,57 @@ supabase:
 api:
   base:
     url: https://api.yourcompany.com
+
+rsa-jwt:
+  enabled: true
+  jwks-url: https://api.yourcompany.com/.well-known/jwks.json
+
+auth:
+  supabase:
+    path: /auth/v1
+  platform:
+    oauth:
+      path: /api/v1/oauth/token
+```
+
+**Migration Configuration (RSA with HMAC Fallback)**
+```yaml
+supabase:
+  jwt:
+    secret: eW91ci1iYXNlNjQtZW5jb2RlZC1qd3Qtc2VjcmV0
+
+api:
+  base:
+    url: https://api.yourcompany.com
+
+rsa-jwt:
+  enabled: true
+  public-key: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0K...
+  hmac-fallback:
+    enabled: true  # Allows HMAC tokens during migration
+
+auth:
+  supabase:
+    path: /auth/v1
+  platform:
+    oauth:
+      path: /api/v1/oauth/token
+```
+
+**Legacy Configuration (HMAC Only)**
+```yaml
+supabase:
+  jwt:
+    secret: eW91ci1iYXNlNjQtZW5jb2RlZC1qd3Qtc2VjcmV0
+
+api:
+  base:
+    url: https://api.yourcompany.com
+
+rsa-jwt:
+  enabled: false
+  hmac-fallback:
+    enabled: true
 
 auth:
   supabase:
