@@ -5,15 +5,14 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.time.Instant
-import java.util.*
 import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
+import java.time.Instant
+import java.util.*
 
 class DualJwtValidatorTest {
 

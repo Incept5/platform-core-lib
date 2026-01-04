@@ -2,7 +2,6 @@
 package org.incept5.platform.core.auth
 
 import jakarta.ws.rs.NameBinding
-import org.incept5.platform.core.model.UserRole
 
 /**
  * Annotation for securing endpoints with authentication and optional role-based authorization.
