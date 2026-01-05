@@ -31,7 +31,9 @@ class DualJwtValidatorTest {
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
-            platformOauthPath = platformOauthPath
+            platformOauthPath = platformOauthPath,
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty()
         )
     }
 
@@ -145,8 +147,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPublicKey = "",
-            jwksUrl = "",
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
             hmacFallbackEnabled = true
         )
         val result = validator.validateToken(token)
@@ -179,8 +181,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPublicKey = "",
-            jwksUrl = "",
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
             hmacFallbackEnabled = true
         )
         val result = validator.validateToken(token)
@@ -345,8 +347,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPublicKey = "",
-            jwksUrl = "",
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
             hmacFallbackEnabled = true
         )
         val entityType = validator.getEntityType(token)
@@ -428,8 +430,8 @@ class DualJwtValidatorTest {
             platformOauthPath = platformOauthPath,
             baseApiUrl = baseApiUrl,
             rsaEnabled = true,
-            rsaPublicKey = publicKeyBase64,
-            jwksUrl = "",
+            rsaPublicKey = Optional.of(publicKeyBase64),
+            jwksUrl = Optional.empty(),
             hmacFallbackEnabled = false
         )
 
@@ -460,8 +462,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPublicKey = "",
-            jwksUrl = "",
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
             hmacFallbackEnabled = true
         )
 
@@ -488,8 +490,8 @@ class DualJwtValidatorTest {
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             rsaEnabled = false,
-            rsaPublicKey = "",
-            jwksUrl = "",
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
             hmacFallbackEnabled = false
         )
 

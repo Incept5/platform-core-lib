@@ -16,6 +16,7 @@ import org.incept5.error.ErrorCategory
 import org.jboss.logging.Logger
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
+import java.util.Optional
 
 /**
  * Exception thrown when a token source cannot be determined or is not recognized.
@@ -38,26 +39,28 @@ class DualJwtValidator @Inject constructor(
     private val platformOauthPath: String,
     @ConfigProperty(name = "rsa-jwt.enabled", defaultValue = "true")
     private val rsaEnabled: Boolean = true,
-    @ConfigProperty(name = "rsa-jwt.public-key", defaultValue = "")
-    private val rsaPublicKey: String = "",
-    @ConfigProperty(name = "rsa-jwt.jwks-url", defaultValue = "")
-    private val jwksUrl: String = ""
+    @ConfigProperty(name = "rsa-jwt.public-key")
+    private val rsaPublicKey: Optional<String>,
+    @ConfigProperty(name = "rsa-jwt.jwks-url")
+    private val jwksUrl: Optional<String>
 ) {
     private val log = Logger.getLogger(DualJwtValidator::class.java)
     
     // Lazy initialization of JWKS provider to avoid fetching keys at startup
     private val jwksProvider: JwksKeyProvider? by lazy {
-        if (jwksUrl.isNotBlank()) {
-            try {
-                log.info("Initializing JWKS provider with URL: $jwksUrl")
-                JwksKeyProvider(jwksUrl)
-            } catch (e: Exception) {
-                log.error("Failed to initialize JWKS provider", e)
+        jwksUrl.map { url ->
+            if (url.isNotBlank()) {
+                try {
+                    log.info("Initializing JWKS provider with URL: $url")
+                    JwksKeyProvider(url)
+                } catch (e: Exception) {
+                    log.error("Failed to initialize JWKS provider", e)
+                    null
+                }
+            } else {
                 null
             }
-        } else {
-            null
-        }
+        }.orElse(null)
     }
 
     private fun requireSupabaseAlgorithm(): Algorithm {
@@ -73,9 +76,10 @@ class DualJwtValidator @Inject constructor(
             }
             
             // Priority 2: Use explicit public key if provided
-            if (rsaPublicKey.isNotBlank()) {
+            val publicKeyValue = rsaPublicKey.orElse(null)
+            if (publicKeyValue != null && publicKeyValue.isNotBlank()) {
                 log.debug("Using explicit public key for RSA verification")
-                val publicKey = parsePublicKey(rsaPublicKey)
+                val publicKey = parsePublicKey(publicKeyValue)
                 return Algorithm.RSA256(publicKey, null)
             }
             

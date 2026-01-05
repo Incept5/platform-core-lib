@@ -191,6 +191,8 @@ This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates 
 
 The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. It supports both RSA (recommended) and HMAC signature verification.
 
+> **📝 Note**: RSA configuration properties (`rsa-jwt.public-key` and `rsa-jwt.jwks-url`) are **truly optional**. Your application will start successfully even if these properties are not defined. See [OPTIONAL_RSA_CONFIG.md](OPTIONAL_RSA_CONFIG.md) for detailed configuration scenarios.
+
 #### Required Properties
 
 ```yaml
@@ -205,7 +207,7 @@ api:
     url: https://your-api-domain.com
 ```
 
-#### RSA Verification (Recommended for Platform Tokens)
+#### RSA Verification (Optional - Recommended for Platform Tokens)
 
 ```yaml
 # Enable RSA verification (default: true)
@@ -213,15 +215,19 @@ rsa-jwt:
   enabled: true
   
   # Option 1: Use JWKS endpoint (recommended for production)
+  # ⚠️ OPTIONAL - omit if not using RSA
   jwks-url: https://your-api-domain.com/.well-known/jwks.json
   
   # Option 2: Use explicit public key (PEM format, base64 encoded)
+  # ⚠️ OPTIONAL - omit if not using RSA
   public-key: your-base64-encoded-public-key
   
   # HMAC fallback for platforms not yet migrated (default: false)
   hmac-fallback:
     enabled: false
 ```
+
+> **💡 Tip**: If you only need Supabase token validation or Platform tokens with HMAC, you can completely omit the `rsa-jwt.public-key` and `rsa-jwt.jwks-url` properties. Set `rsa-jwt.enabled=false` and `rsa-jwt.hmac-fallback.enabled=true` instead.
 
 **Configuration Priority:**
 1. **JWKS URL** (highest priority) - Fetches public keys from a JWKS endpoint
@@ -315,7 +321,7 @@ auth:
       path: /api/v1/oauth/token
 ```
 
-**Legacy Configuration (HMAC Only)**
+**Simple Configuration (HMAC Only - No RSA Properties Needed)**
 ```yaml
 supabase:
   jwt:
@@ -329,6 +335,7 @@ rsa-jwt:
   enabled: false
   hmac-fallback:
     enabled: true
+  # ✨ No need to specify public-key or jwks-url!
 
 auth:
   supabase:
@@ -337,6 +344,10 @@ auth:
     oauth:
       path: /api/v1/oauth/token
 ```
+
+> **✅ This is the simplest configuration** - perfect for services that only use Supabase tokens or Platform tokens with HMAC signing. No RSA properties required!
+
+For more configuration scenarios and details, see [OPTIONAL_RSA_CONFIG.md](OPTIONAL_RSA_CONFIG.md).
 
 ### CDI Bean Discovery
 
