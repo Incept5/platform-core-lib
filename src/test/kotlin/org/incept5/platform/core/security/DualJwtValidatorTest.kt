@@ -5,14 +5,15 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.security.KeyPairGenerator
-import java.security.interfaces.RSAPrivateKey
 import java.time.Instant
 import java.util.*
+import java.security.KeyPairGenerator
+import java.security.interfaces.RSAPrivateKey
 
 class DualJwtValidatorTest {
 
@@ -137,41 +138,39 @@ class DualJwtValidatorTest {
             scopes = listOf("payment:read", "partner:manage")
         )
 
-        // When - Note: This test uses HMAC for simplicity, but production should use RSA
-        // In production, Platform tokens would be RSA-signed and validated using mp.jwt.verify.publickey
+        // When
         val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
-            publicKeyLocation = "",
-            publicKey = ""
+            rsaEnabled = false,
+            rsaPublicKey = "",
+            jwksUrl = "",
+            hmacFallbackEnabled = true
         )
-        
-        // This will fail since no RSA key is configured
-        val exception = shouldThrow<UnknownTokenException> {
-            validator.validateToken(token)
-        }
-        exception.message?.contains("No RSA public key configured") shouldBe true
+        val result = validator.validateToken(token)
+
+        // Then
+        result.isValid shouldBe true
+        result.subject shouldBe "client-123"
+        result.userRole shouldBe UserRole.entity_admin
+        result.entityType shouldBe EntityType.partner
+        result.entityId shouldBe "partner-789"
+        result.scopes shouldBe listOf("payment:read", "partner:manage")
+        result.clientId shouldBe "client-123"
     }
 
     @Test
     fun `should validate Platform token with minimal claims`() {
-        // Given RSA key pair
-        val kpg = KeyPairGenerator.getInstance("RSA")
-        kpg.initialize(2048)
-        val kp = kpg.generateKeyPair()
-        val privateKey = kp.private as RSAPrivateKey
-        val publicKey = kp.public as java.security.interfaces.RSAPublicKey
-        val publicKeyPem = convertPublicKeyToPem(publicKey)
-        
-        val token = JWT.create()
-            .withSubject("client-minimal")
-            .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_readonly.name)
-            .withClaim("scopes", emptyList<String>())
-            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
-            .sign(Algorithm.RSA256(null, privateKey))
+        // Given
+        val token = createPlatformToken(
+            subject = "client-minimal",
+            role = UserRole.entity_readonly,
+            entityType = null,
+            entityId = null,
+            scopes = emptyList()
+        )
 
         // When
         val validator = DualJwtValidator(
@@ -179,8 +178,10 @@ class DualJwtValidatorTest {
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
-            publicKeyLocation = "",
-            publicKey = publicKeyPem
+            rsaEnabled = false,
+            rsaPublicKey = "",
+            jwksUrl = "",
+            hmacFallbackEnabled = true
         )
         val result = validator.validateToken(token)
 
@@ -328,21 +329,14 @@ class DualJwtValidatorTest {
 
     @Test
     fun `getEntityType should return null for token without entity type`() {
-        // Given RSA key pair
-        val kpg = KeyPairGenerator.getInstance("RSA")
-        kpg.initialize(2048)
-        val kp = kpg.generateKeyPair()
-        val privateKey = kp.private as RSAPrivateKey
-        val publicKey = kp.public as java.security.interfaces.RSAPublicKey
-        val publicKeyPem = convertPublicKeyToPem(publicKey)
-        
-        val token = JWT.create()
-            .withSubject("client-123")
-            .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.platform_admin.name)
-            .withClaim("scopes", emptyList<String>())
-            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
-            .sign(Algorithm.RSA256(null, privateKey))
+        // Given
+        val token = createPlatformToken(
+            subject = "client-123",
+            role = UserRole.platform_admin,
+            entityType = null,
+            entityId = null,
+            scopes = emptyList()
+        )
 
         // When
         val validator = DualJwtValidator(
@@ -350,8 +344,10 @@ class DualJwtValidatorTest {
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
-            publicKeyLocation = "",
-            publicKey = publicKeyPem
+            rsaEnabled = false,
+            rsaPublicKey = "",
+            jwksUrl = "",
+            hmacFallbackEnabled = true
         )
         val entityType = validator.getEntityType(token)
 
@@ -417,22 +413,24 @@ class DualJwtValidatorTest {
     }
 
     @Test
-    fun `should validate RS256 Platform token with inline public key`() {
+    fun `should validate RS256 Platform token when RSA enabled`() {
         // Given RSA key pair
         val kpg = KeyPairGenerator.getInstance("RSA")
         kpg.initialize(2048)
         val kp = kpg.generateKeyPair()
         val privateKey = kp.private as RSAPrivateKey
         val publicKey = kp.public as java.security.interfaces.RSAPublicKey
-        val publicKeyPem = convertPublicKeyToPem(publicKey)
+        val publicKeyBase64 = Base64.getEncoder().encodeToString(publicKey.encoded)
         
         val rsaValidator = DualJwtValidator(
             jwtSecret = jwtSecret,
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
             baseApiUrl = baseApiUrl,
-            publicKeyLocation = "",
-            publicKey = publicKeyPem
+            rsaEnabled = true,
+            rsaPublicKey = publicKeyBase64,
+            jwksUrl = "",
+            hmacFallbackEnabled = false
         )
 
         // RS256-signed platform token
@@ -455,18 +453,48 @@ class DualJwtValidatorTest {
     }
 
     @Test
-    fun `should fail Platform token when no RSA key configured`() {
+    fun `should validate HS256 Platform token when HMAC fallback enabled`() {
         val validator = DualJwtValidator(
             jwtSecret = jwtSecret,
             baseApiUrl = baseApiUrl,
             supabaseAuthPath = supabaseAuthPath,
             platformOauthPath = platformOauthPath,
-            publicKeyLocation = "",
-            publicKey = ""
+            rsaEnabled = false,
+            rsaPublicKey = "",
+            jwksUrl = "",
+            hmacFallbackEnabled = true
         )
 
         val token = JWT.create()
-            .withSubject("client-no-key")
+            .withSubject("client-hs256")
+            .withIssuer("$baseApiUrl$platformOauthPath")
+            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("scopes", listOf("payment:read"))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+            .sign(algorithm)
+
+        val result = validator.validateToken(token)
+        result.isValid shouldBe true
+        result.subject shouldBe "client-hs256"
+        result.userRole shouldBe UserRole.entity_admin
+        result.clientId shouldBe "client-hs256"
+    }
+
+    @Test
+    fun `should fail HS256 Platform token when HMAC fallback disabled`() {
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPublicKey = "",
+            jwksUrl = "",
+            hmacFallbackEnabled = false
+        )
+
+        val token = JWT.create()
+            .withSubject("client-hs256-no-fallback")
             .withIssuer("$baseApiUrl$platformOauthPath")
             .withClaim("role", UserRole.entity_admin.name)
             .withClaim("scopes", listOf("payment:read"))
@@ -476,12 +504,6 @@ class DualJwtValidatorTest {
         val ex = shouldThrow<UnknownTokenException> {
             validator.validateToken(token)
         }
-        ex.message?.contains("No RSA public key configured") shouldBe true
-    }
-
-    // Helper method to convert RSA public key to PEM format
-    private fun convertPublicKeyToPem(publicKey: java.security.interfaces.RSAPublicKey): String {
-        val encoded = Base64.getEncoder().encodeToString(publicKey.encoded)
-        return "-----BEGIN PUBLIC KEY-----\n$encoded\n-----END PUBLIC KEY-----"
+        ex.message?.contains("No enabled algorithm for platform token validation") shouldBe true
     }
 }

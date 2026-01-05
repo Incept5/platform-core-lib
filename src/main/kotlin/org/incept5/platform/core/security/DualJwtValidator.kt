@@ -28,26 +28,29 @@ class UnknownTokenException(message: String, cause: Throwable? = null) :
 class DualJwtValidator @Inject constructor(
     @ConfigProperty(name = "supabase.jwt.secret")
     private val jwtSecret: String,
+    @ConfigProperty(name = "rsa-jwt.hmac-fallback.enabled", defaultValue = "false")
+    private val hmacFallbackEnabled: Boolean = false,
     @ConfigProperty(name = "api.base.url")
     private val baseApiUrl: String,
     @ConfigProperty(name = "auth.supabase.path", defaultValue = "/auth/v1")
     private val supabaseAuthPath: String,
     @ConfigProperty(name = "auth.platform.oauth.path", defaultValue = "/api/v1/oauth/token")
     private val platformOauthPath: String,
-    // Standard MicroProfile JWT configuration properties
-    @ConfigProperty(name = "mp.jwt.verify.publickey.location", defaultValue = "")
-    private val publicKeyLocation: String = "",
-    @ConfigProperty(name = "mp.jwt.verify.publickey", defaultValue = "")
-    private val publicKey: String = ""
+    @ConfigProperty(name = "rsa-jwt.enabled", defaultValue = "true")
+    private val rsaEnabled: Boolean = true,
+    @ConfigProperty(name = "rsa-jwt.public-key", defaultValue = "")
+    private val rsaPublicKey: String = "",
+    @ConfigProperty(name = "rsa-jwt.jwks-url", defaultValue = "")
+    private val jwksUrl: String = ""
 ) {
     private val log = Logger.getLogger(DualJwtValidator::class.java)
     
-    // Lazy initialization of JWKS provider using standard MicroProfile config
+    // Lazy initialization of JWKS provider to avoid fetching keys at startup
     private val jwksProvider: JwksKeyProvider? by lazy {
-        if (publicKeyLocation.isNotBlank() && publicKeyLocation.startsWith("http")) {
+        if (jwksUrl.isNotBlank()) {
             try {
-                log.info("Initializing JWKS provider with URL from mp.jwt.verify.publickey.location: $publicKeyLocation")
-                JwksKeyProvider(publicKeyLocation)
+                log.info("Initializing JWKS provider with URL: $jwksUrl")
+                JwksKeyProvider(jwksUrl)
             } catch (e: Exception) {
                 log.error("Failed to initialize JWKS provider", e)
                 null
@@ -62,36 +65,30 @@ class DualJwtValidator @Inject constructor(
     }
 
     private fun requirePlatformAlgorithm(): Algorithm {
-        // Priority 1: Use JWKS provider if configured via mp.jwt.verify.publickey.location
-        jwksProvider?.let { provider ->
-            log.debug("Using JWKS provider for RSA verification (from mp.jwt.verify.publickey.location)")
-            return Algorithm.RSA256(provider)
-        }
-        
-        // Priority 2: Use explicit public key if provided via mp.jwt.verify.publickey
-        if (publicKey.isNotBlank()) {
-            log.debug("Using explicit public key for RSA verification (from mp.jwt.verify.publickey)")
-            val rsaPublicKey = parsePublicKey(publicKey)
-            return Algorithm.RSA256(rsaPublicKey, null)
-        }
-        
-        // Priority 3: Check if publicKeyLocation is a file path
-        if (publicKeyLocation.isNotBlank() && !publicKeyLocation.startsWith("http")) {
-            try {
-                log.debug("Loading public key from file: $publicKeyLocation")
-                val keyContent = java.io.File(publicKeyLocation).readText()
-                val rsaPublicKey = parsePublicKey(keyContent)
-                return Algorithm.RSA256(rsaPublicKey, null)
-            } catch (e: Exception) {
-                log.error("Failed to load public key from file: $publicKeyLocation", e)
+        if (rsaEnabled) {
+            // Priority 1: Use JWKS provider if configured
+            jwksProvider?.let { provider ->
+                log.debug("Using JWKS provider for RSA verification")
+                return Algorithm.RSA256(provider)
             }
+            
+            // Priority 2: Use explicit public key if provided
+            if (rsaPublicKey.isNotBlank()) {
+                log.debug("Using explicit public key for RSA verification")
+                val publicKey = parsePublicKey(rsaPublicKey)
+                return Algorithm.RSA256(publicKey, null)
+            }
+            
+            log.warn("RSA enabled but no public key or JWKS URL configured")
         }
         
-        throw UnknownTokenException(
-            "No RSA public key configured for platform token validation. " +
-            "Configure either mp.jwt.verify.publickey.location (JWKS URL or file path) " +
-            "or mp.jwt.verify.publickey (inline key)."
-        )
+        // Fallback: Use HMAC if enabled
+        if (hmacFallbackEnabled) {
+            log.debug("Using HMAC256 fallback for platform token validation")
+            return Algorithm.HMAC256(Base64.getDecoder().decode(jwtSecret))
+        }
+        
+        throw UnknownTokenException("No enabled algorithm for platform token validation. Configure either rsa-jwt.public-key, rsa-jwt.jwks-url, or enable HMAC fallback.")
     }
 
 
@@ -267,14 +264,15 @@ class DualJwtValidator @Inject constructor(
     /**
      * Parse a PEM-encoded or raw base64 RSA public key.
      * Supports both X.509 SubjectPublicKeyInfo format and raw base64.
-     * Handles both base64-encoded content and direct PEM format.
      */
-    private fun parsePublicKey(keyContent: String): RSAPublicKey {
+    private fun parsePublicKey(base64: String): RSAPublicKey {
         try {
-            // If content looks like PEM format, process it directly
-            val keyBytes = if (keyContent.contains("BEGIN")) {
+            val raw = Base64.getDecoder().decode(base64)
+            val content = String(raw, Charsets.UTF_8)
+            
+            val keyBytes = if (content.contains("BEGIN")) {
                 // PEM format: strip headers and decode
-                val cleaned = keyContent
+                val cleaned = content
                     .replace("-----BEGIN PUBLIC KEY-----", "")
                     .replace("-----END PUBLIC KEY-----", "")
                     .replace("-----BEGIN RSA PUBLIC KEY-----", "")
@@ -284,28 +282,7 @@ class DualJwtValidator @Inject constructor(
                     .trim()
                 Base64.getDecoder().decode(cleaned)
             } else {
-                // Try to decode as base64 first, if that fails, assume it's already decoded
-                try {
-                    val decoded = Base64.getDecoder().decode(keyContent.trim())
-                    val decodedStr = String(decoded, Charsets.UTF_8)
-                    // Check if the decoded content is PEM format
-                    if (decodedStr.contains("BEGIN")) {
-                        val cleaned = decodedStr
-                            .replace("-----BEGIN PUBLIC KEY-----", "")
-                            .replace("-----END PUBLIC KEY-----", "")
-                            .replace("-----BEGIN RSA PUBLIC KEY-----", "")
-                            .replace("-----END RSA PUBLIC KEY-----", "")
-                            .replace("\n", "")
-                            .replace("\r", "")
-                            .trim()
-                        Base64.getDecoder().decode(cleaned)
-                    } else {
-                        decoded
-                    }
-                } catch (e: Exception) {
-                    // If base64 decode fails, treat as raw bytes
-                    keyContent.toByteArray(Charsets.UTF_8)
-                }
+                raw
             }
             
             val spec = java.security.spec.X509EncodedKeySpec(keyBytes)

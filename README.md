@@ -189,12 +189,12 @@ This library requires Quarkus 3.22.2+ and Java 21+. It automatically integrates 
 
 ### JWT Validation Configuration
 
-The `DualJwtValidator` supports validation of tokens from two sources: Supabase (HMAC) and Platform OAuth (RSA). It uses **standard MicroProfile JWT configuration** for RSA verification.
+The `DualJwtValidator` supports validation of tokens from two sources: Supabase and Platform OAuth. It supports both RSA (recommended) and HMAC signature verification.
 
 #### Required Properties
 
 ```yaml
-# JWT secret for Supabase HMAC token validation (base64 encoded)
+# JWT secret for HMAC token validation (base64 encoded)
 supabase:
   jwt:
     secret: your-base64-encoded-jwt-secret
@@ -205,34 +205,28 @@ api:
     url: https://your-api-domain.com
 ```
 
-#### RSA Verification (Standard MicroProfile JWT)
-
-For Platform OAuth tokens, use **standard Quarkus MicroProfile JWT configuration**:
+#### RSA Verification (Recommended for Platform Tokens)
 
 ```yaml
-# Standard MicroProfile JWT configuration
-mp:
-  jwt:
-    verify:
-      # Option 1: JWKS endpoint (recommended for production)
-      publickey:
-        location: https://your-api-domain.com/.well-known/jwks.json
-      
-      # Option 2: Explicit public key (PEM format)
-      # publickey: |
-      #   -----BEGIN PUBLIC KEY-----
-      #   MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
-      #   -----END PUBLIC KEY-----
-      
-      # Option 3: File path to public key
-      # publickey:
-      #   location: /path/to/public-key.pem
+# Enable RSA verification (default: true)
+rsa-jwt:
+  enabled: true
+  
+  # Option 1: Use JWKS endpoint (recommended for production)
+  jwks-url: https://your-api-domain.com/.well-known/jwks.json
+  
+  # Option 2: Use explicit public key (PEM format, base64 encoded)
+  public-key: your-base64-encoded-public-key
+  
+  # HMAC fallback for platforms not yet migrated (default: false)
+  hmac-fallback:
+    enabled: false
 ```
 
 **Configuration Priority:**
-1. **JWKS URL** (highest priority) - HTTP(S) URL in `mp.jwt.verify.publickey.location`
-2. **File Path** - File path in `mp.jwt.verify.publickey.location`
-3. **Inline Key** (lowest priority) - PEM key in `mp.jwt.verify.publickey`
+1. **JWKS URL** (highest priority) - Fetches public keys from a JWKS endpoint
+2. **Explicit Public Key** - Uses a configured RSA public key
+3. **HMAC Fallback** (lowest priority) - Falls back to HMAC256 if enabled
 
 #### Optional Properties
 
@@ -275,7 +269,7 @@ Platform tokens should contain:
 
 #### Example Configurations
 
-**Production Configuration (JWKS)**
+**Production Configuration (RSA with JWKS)**
 ```yaml
 supabase:
   jwt:
@@ -285,12 +279,9 @@ api:
   base:
     url: https://api.yourcompany.com
 
-# Standard MicroProfile JWT configuration
-mp:
-  jwt:
-    verify:
-      publickey:
-        location: https://api.yourcompany.com/.well-known/jwks.json
+rsa-jwt:
+  enabled: true
+  jwks-url: https://api.yourcompany.com/.well-known/jwks.json
 
 auth:
   supabase:
@@ -300,7 +291,7 @@ auth:
       path: /api/v1/oauth/token
 ```
 
-**Configuration with Explicit Public Key**
+**Migration Configuration (RSA with HMAC Fallback)**
 ```yaml
 supabase:
   jwt:
@@ -310,14 +301,11 @@ api:
   base:
     url: https://api.yourcompany.com
 
-# Standard MicroProfile JWT configuration
-mp:
-  jwt:
-    verify:
-      publickey: |
-        -----BEGIN PUBLIC KEY-----
-        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
-        -----END PUBLIC KEY-----
+rsa-jwt:
+  enabled: true
+  public-key: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0K...
+  hmac-fallback:
+    enabled: true  # Allows HMAC tokens during migration
 
 auth:
   supabase:
@@ -327,7 +315,7 @@ auth:
       path: /api/v1/oauth/token
 ```
 
-**Configuration with Key File**
+**Legacy Configuration (HMAC Only)**
 ```yaml
 supabase:
   jwt:
@@ -337,12 +325,10 @@ api:
   base:
     url: https://api.yourcompany.com
 
-# Standard MicroProfile JWT configuration
-mp:
-  jwt:
-    verify:
-      publickey:
-        location: /config/keys/jwt-public-key.pem
+rsa-jwt:
+  enabled: false
+  hmac-fallback:
+    enabled: true
 
 auth:
   supabase:
