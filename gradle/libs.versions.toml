@@ -14,6 +14,7 @@ java-jwt = "4.4.0"
 correlation = "1.0.20"
 error-lib = "1.0.26"
 cryptography-lib = "1.0.28"
+authz-lib = "1.0.6"
 
 [libraries]
 # Core dependencies
@@ -40,6 +41,9 @@ wiremock = { module = "org.wiremock:wiremock", version.ref = "wiremock" }
 incept5-correlation = { module = "com.github.incept5:correlation", version.ref = "correlation" }
 incept5-error-quarkus = { module = "com.github.incept5.error-lib:error-quarkus", version.ref = "error-lib" }
 incept5-cryptography = { module = "com.github.incept5.cryptography-lib:cryptography-quarkus", version.ref = "cryptography-lib" }
+incept5-authz-core = { module = "com.github.incept5.authz-lib:authz-core", version.ref = "authz-lib" }
+incept5-authz-quarkus = { module = "com.github.incept5.authz-lib:authz-quarkus", version.ref = "authz-lib" }
+incept5-authz-testing = { module = "com.github.incept5.authz-lib:authz-testing", version.ref = "authz-lib" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
