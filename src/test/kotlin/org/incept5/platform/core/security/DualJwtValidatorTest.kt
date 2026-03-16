@@ -58,7 +58,7 @@ class DualJwtValidatorTest {
         result.userRole shouldBe UserRole.entity_user
         result.entityType shouldBe EntityType.partner
         result.entityId shouldBe "partner-123"
-        result.scopes shouldBe listOf("payment:create", "payment:read")
+        result.scopes shouldBe emptyList()
         result.clientId shouldBe null
     }
 
@@ -75,15 +75,11 @@ class DualJwtValidatorTest {
         result.userRole shouldBe UserRole.platform_admin
         result.entityType shouldBe null
         result.entityId shouldBe null
-        result.scopes shouldBe listOf(
-            "payment:create", "payment:read", "payment:manage",
-            "partner:create", "partner:read", "partner:manage",
-            "merchant:create", "merchant:read", "merchant:manage"
-        )
+        result.scopes shouldBe emptyList()
     }
 
     @Test
-    fun `should validate Supabase entity admin token with correct scopes`() {
+    fun `should validate Supabase entity admin token`() {
         // Given
         val token = createSupabaseToken(
             subject = "admin123",
@@ -99,9 +95,7 @@ class DualJwtValidatorTest {
         result.isValid shouldBe true
         result.userRole shouldBe UserRole.entity_admin
         result.entityType shouldBe EntityType.merchant
-        result.scopes shouldBe listOf(
-            "payment:create", "payment:read", "merchant:manage"
-        )
+        result.scopes shouldBe emptyList()
     }
 
     @Test
@@ -120,11 +114,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.userRole shouldBe UserRole.platform_admin
-        result.scopes shouldBe listOf(
-            "payment:create", "payment:read", "payment:manage",
-            "partner:create", "partner:read", "partner:manage",
-            "merchant:create", "merchant:read", "merchant:manage"
-        )
+        result.scopes shouldBe emptyList()
     }
 
     // Platform Token Tests

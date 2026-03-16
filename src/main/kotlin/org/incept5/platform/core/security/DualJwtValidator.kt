@@ -157,7 +157,7 @@ class DualJwtValidator @Inject constructor(
                     userRole = UserRole.platform_admin, // Service role gets platform_admin privileges
                     entityType = null,
                     entityId = null,
-                    scopes = deriveScopesFromRole(UserRole.platform_admin, null),
+                    scopes = emptyList(),
                     clientId = null,
                     tokenSource = TokenSource.SUPABASE
                 )
@@ -174,8 +174,8 @@ class DualJwtValidator @Inject constructor(
             }
             val entityId = appMetadata?.get("entity_id")?.toString()
 
-            // Derive scopes from role and entity type for Supabase tokens
-            val scopes = deriveScopesFromRole(userRole, entityType)
+            // Scopes are no longer derived from role — authz-lib handles permissions
+            val scopes = emptyList<String>()
 
             return TokenValidationResult.valid(
                 subject = subject,
@@ -227,37 +227,6 @@ class DualJwtValidator @Inject constructor(
         } catch (e: Exception) {
             log.warn("Platform token validation failed", e)
             throw UnknownTokenException("Invalid Platform token: ${e.message}", e)
-        }
-    }
-
-    private fun deriveScopesFromRole(role: UserRole, entityType: EntityType?): List<String> {
-        return when (role) {
-            UserRole.platform_admin -> listOf(
-                "payment:create", "payment:read", "payment:manage",
-                "partner:create", "partner:read", "partner:manage",
-                "merchant:create", "merchant:read", "merchant:manage"
-            )
-            UserRole.entity_admin -> when (entityType) {
-                EntityType.partner -> listOf(
-                    "payment:create", "payment:read", "partner:manage",
-                    "merchant:create", "merchant:read", "merchant:manage"
-                )
-                EntityType.merchant -> listOf(
-                    "payment:create", "payment:read", "merchant:manage"
-                )
-                else -> emptyList()
-            }
-            UserRole.entity_user -> when (entityType) {
-                EntityType.partner -> listOf("payment:create", "payment:read")
-                EntityType.merchant -> listOf("payment:create", "payment:read")
-                else -> emptyList()
-            }
-            UserRole.entity_readonly -> listOf("payment:read")
-            UserRole.service_role -> listOf(
-                "payment:create", "payment:read", "payment:manage",
-                "partner:create", "partner:read", "partner:manage",
-                "merchant:create", "merchant:read", "merchant:manage"
-            )
         }
     }
 
