@@ -3,7 +3,6 @@ package org.incept5.platform.core.security
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import org.incept5.platform.core.model.EntityType
 import java.time.Instant
 import java.util.*
 
@@ -43,7 +42,7 @@ open class JwtGenerator(
             .withSubject(user.userId.toString())
             .withIssuedAt(Date.from(now))
             .withExpiresAt(Date.from(now.plusSeconds(expirationMinutes * 60)))
-            .withClaim("role", user.userRole.name)
+            .withClaim("role", user.userRole)
             .withClaim("aud", "authenticated")
             .withIssuer(issuer)
             .withClaim("email", "${user.userId}@test.com")
@@ -82,7 +81,7 @@ open class JwtGenerator(
         val algorithm = createAlgorithm()
 
         // Create app_metadata map
-        val appMetadata = createAppMetadata(partnerId, EntityType.partner)
+        val appMetadata = createAppMetadata(partnerId, "partner")
 
         // Create the token builder
         val tokenBuilder = JWT.create()
@@ -122,7 +121,7 @@ open class JwtGenerator(
         val algorithm = createAlgorithm()
 
         // Create app_metadata map
-        val appMetadata = createAppMetadata(partnerId, EntityType.partner)
+        val appMetadata = createAppMetadata(partnerId, "partner")
 
         // Create the token builder
         val tokenBuilder = JWT.create()
@@ -165,7 +164,7 @@ open class JwtGenerator(
      * @param entityType The entity type (optional)
      * @return Map of app metadata claims
      */
-    private fun createAppMetadata(entityId: String?, entityType: EntityType?): Map<String, Any> {
+    private fun createAppMetadata(entityId: String?, entityType: String?): Map<String, Any> {
         val appMetadata = HashMap<String, Any>()
 
         if (entityId != null) {
@@ -173,7 +172,7 @@ open class JwtGenerator(
         }
 
         if (entityType != null) {
-            appMetadata["entity_type"] = entityType.name
+            appMetadata["entity_type"] = entityType
         }
 
         return appMetadata

@@ -9,9 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.incept5.platform.core.error.ApiException
-import org.incept5.platform.core.model.UserRole
 import java.util.Base64
-import org.incept5.platform.core.model.EntityType
 import org.incept5.error.ErrorCategory
 import org.jboss.logging.Logger
 import java.security.interfaces.RSAPrivateKey
@@ -146,15 +144,14 @@ class DualJwtValidator @Inject constructor(
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
 
-            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.valueOf(it) }
+            val userRole = jwt.getClaim("role")?.asString()
                 ?: throw JWTVerificationException("Invalid role")
 
-
             // Handle service_role tokens specially
-            if (userRole == UserRole.service_role) {
+            if (userRole == "service_role") {
                 return TokenValidationResult.valid(
                     subject = subject,
-                    userRole = UserRole.platform_admin, // Service role gets platform_admin privileges
+                    userRole = "platform_admin", // Service role gets platform_admin privileges
                     entityType = null,
                     entityId = null,
                     scopes = emptyList(),
@@ -163,15 +160,8 @@ class DualJwtValidator @Inject constructor(
                 )
             }
 
-
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
-            val entityType = appMetadata?.get("entity_type")?.toString()?.let {
-                try {
-                    EntityType.valueOf(it)
-                } catch (e: IllegalArgumentException) {
-                    null // Allow null entity type for service roles
-                }
-            }
+            val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
 
             // Scopes are no longer derived from role — authz-lib handles permissions
@@ -202,11 +192,11 @@ class DualJwtValidator @Inject constructor(
                 .verify(token)
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
-            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.valueOf(it) }
+            val userRole = jwt.getClaim("role")?.asString()
                 ?: throw JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
-            val entityType = appMetadata?.get("entity_type")?.toString()?.let { EntityType.valueOf(it) }
+            val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
 
             // Extract explicit scopes from FanFair tokens
@@ -231,7 +221,7 @@ class DualJwtValidator @Inject constructor(
     }
 
 
-    fun getEntityType(token: String): EntityType? = validateToken(token).entityType
+    fun getEntityType(token: String): String? = validateToken(token).entityType
     fun getEntityId(token: String): String? = validateToken(token).entityId
 
     /**

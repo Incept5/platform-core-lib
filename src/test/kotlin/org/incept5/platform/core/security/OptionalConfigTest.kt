@@ -2,7 +2,6 @@ package org.incept5.platform.core.security
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
-import org.incept5.platform.core.model.UserRole
 import org.junit.jupiter.api.Test
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
@@ -41,7 +40,7 @@ class OptionalConfigTest {
         val supabaseToken = JWT.create()
             .withSubject("user123")
             .withIssuer("$baseApiUrl$supabaseAuthPath")
-            .withClaim("role", UserRole.entity_user.name)
+            .withClaim("role", "entity_user")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
@@ -70,7 +69,7 @@ class OptionalConfigTest {
         val platformToken = JWT.create()
             .withSubject("client-123")
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
@@ -80,7 +79,7 @@ class OptionalConfigTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe UserRole.entity_admin
+        result.userRole shouldBe "entity_admin"
     }
 
     @Test
@@ -101,7 +100,7 @@ class OptionalConfigTest {
         val platformToken = JWT.create()
             .withSubject("client-456")
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_user.name)
+            .withClaim("role", "entity_user")
             .withClaim("scopes", emptyList<String>())
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
@@ -131,7 +130,7 @@ class OptionalConfigTest {
         val platformToken = JWT.create()
             .withSubject("client-789")
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_readonly.name)
+            .withClaim("role", "entity_readonly")
             .withClaim("scopes", listOf("payment:read"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
@@ -161,7 +160,7 @@ class OptionalConfigTest {
         val supabaseToken = JWT.create()
             .withSubject("supabase-user")
             .withIssuer("$baseApiUrl$supabaseAuthPath")
-            .withClaim("role", UserRole.platform_admin.name)
+            .withClaim("role", "platform_admin")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
@@ -170,6 +169,6 @@ class OptionalConfigTest {
         // Then - Supabase validation should work (uses jwtSecret)
         result.isValid shouldBe true
         result.subject shouldBe "supabase-user"
-        result.userRole shouldBe UserRole.platform_admin
+        result.userRole shouldBe "platform_admin"
     }
 }

@@ -5,8 +5,6 @@ import org.incept5.authz.core.context.DefaultPrincipalContext
 import org.incept5.authz.core.context.PrincipalContext
 import org.incept5.authz.core.model.EntityRole
 import org.incept5.authz.core.service.TokenExchangePlugin
-import org.incept5.platform.core.model.EntityType
-import org.incept5.platform.core.model.UserRole
 import org.incept5.platform.core.security.DualJwtValidator
 import org.incept5.platform.core.security.TokenValidationResult
 import org.jboss.logging.Logger
@@ -54,25 +52,28 @@ class SupabaseTokenExchangePlugin(
     }
 
     /**
-     * Maps the existing UserRole + EntityType combination to an authz-lib role name.
+     * Maps JWT role string + entity type string to an authz-lib role name.
+     * Handles both old role names (from Supabase JWT) and new role names (pass-through).
      */
-    internal fun mapRole(userRole: UserRole, entityType: EntityType?): String = when (userRole) {
-        UserRole.platform_admin, UserRole.service_role -> "backoffice.admin"
-        UserRole.entity_admin -> when (entityType) {
-            EntityType.partner -> "partner.admin"
-            EntityType.merchant -> "merchant.admin"
+    internal fun mapRole(userRole: String, entityType: String?): String = when (userRole) {
+        "platform_admin", "service_role" -> "backoffice.admin"
+        "entity_admin" -> when (entityType) {
+            "partner" -> "partner.admin"
+            "merchant" -> "merchant.admin"
             else -> "partner.user"
         }
-        UserRole.entity_user -> when (entityType) {
-            EntityType.partner -> "partner.user"
-            EntityType.merchant -> "merchant.user"
+        "entity_user" -> when (entityType) {
+            "partner" -> "partner.user"
+            "merchant" -> "merchant.user"
             else -> "partner.user"
         }
-        UserRole.entity_readonly -> when (entityType) {
-            EntityType.partner -> "partner.user"
-            EntityType.merchant -> "merchant.user"
+        "entity_readonly" -> when (entityType) {
+            "partner" -> "partner.user"
+            "merchant" -> "merchant.user"
             else -> "partner.user"
         }
+        // Pass-through for new role names (already mapped)
+        else -> userRole
     }
 
     /**
@@ -85,7 +86,7 @@ class SupabaseTokenExchangePlugin(
         val roleName = mapRole(result.userRole, result.entityType)
         return listOf(
             EntityRole(
-                type = result.entityType!!.name.lowercase(),
+                type = result.entityType!!.lowercase(),
                 roles = listOf(roleName),
                 ids = listOf(result.entityId!!)
             )
