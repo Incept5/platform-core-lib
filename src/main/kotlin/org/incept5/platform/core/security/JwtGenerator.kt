@@ -42,7 +42,7 @@ open class JwtGenerator(
             .withSubject(user.userId.toString())
             .withIssuedAt(Date.from(now))
             .withExpiresAt(Date.from(now.plusSeconds(expirationMinutes * 60)))
-            .withClaim("role", user.userRole)
+            .withClaim("role", user.userRole.value)
             .withClaim("aud", "authenticated")
             .withIssuer(issuer)
             .withClaim("email", "${user.userId}@test.com")

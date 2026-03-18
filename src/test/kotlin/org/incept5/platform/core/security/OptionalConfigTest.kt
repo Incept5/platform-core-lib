@@ -1,4 +1,5 @@
 package org.incept5.platform.core.security
+import org.incept5.platform.core.model.UserRole
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -79,7 +80,7 @@ class OptionalConfigTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe "entity_admin"
+        result.userRole shouldBe UserRole.ENTITY_ADMIN
     }
 
     @Test
@@ -169,6 +170,6 @@ class OptionalConfigTest {
         // Then - Supabase validation should work (uses jwtSecret)
         result.isValid shouldBe true
         result.subject shouldBe "supabase-user"
-        result.userRole shouldBe "platform_admin"
+        result.userRole shouldBe UserRole.PLATFORM_ADMIN
     }
 }

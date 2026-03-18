@@ -39,7 +39,7 @@ class SupabaseTokenExchangePlugin(
             UUID.nameUUIDFromBytes(result.subject.toByteArray())
         }
 
-        val globalRole = mapRole(result.userRole, result.entityType)
+        val globalRole = mapRole(result.userRole.value, result.entityType)
         val entityRoles = buildEntityRoles(result)
 
         log.debug("Token exchanged: subject=${result.subject}, globalRole=$globalRole, entityRoles=$entityRoles")
@@ -83,7 +83,7 @@ class SupabaseTokenExchangePlugin(
     private fun buildEntityRoles(result: TokenValidationResult): List<EntityRole> {
         if (result.entityType == null || result.entityId == null) return emptyList()
 
-        val roleName = mapRole(result.userRole, result.entityType)
+        val roleName = mapRole(result.userRole.value, result.entityType)
         return listOf(
             EntityRole(
                 type = result.entityType!!.lowercase(),

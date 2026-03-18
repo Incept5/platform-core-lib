@@ -1,4 +1,5 @@
 package org.incept5.platform.core.authz
+import org.incept5.platform.core.model.UserRole
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm

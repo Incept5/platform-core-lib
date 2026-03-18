@@ -1,10 +1,12 @@
 
 package org.incept5.platform.core.security
 
+import org.incept5.platform.core.model.UserRole
+
 data class TokenValidationResult(
     val isValid: Boolean,
     val subject: String,
-    val userRole: String,
+    val userRole: UserRole,
     val entityType: String? = null,
     val entityId: String? = null,
     val scopes: List<String> = emptyList(),
@@ -14,7 +16,7 @@ data class TokenValidationResult(
     companion object {
         fun valid(
             subject: String,
-            userRole: String,
+            userRole: UserRole,
             entityType: String?,
             entityId: String?,
             scopes: List<String> = emptyList(),

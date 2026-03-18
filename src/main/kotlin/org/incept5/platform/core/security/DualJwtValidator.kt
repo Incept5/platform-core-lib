@@ -9,6 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.incept5.platform.core.error.ApiException
+import org.incept5.platform.core.model.UserRole
 import java.util.Base64
 import org.incept5.error.ErrorCategory
 import org.jboss.logging.Logger
@@ -144,14 +145,14 @@ class DualJwtValidator @Inject constructor(
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
 
-            val userRole = jwt.getClaim("role")?.asString()
+            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.of(it) }
                 ?: throw JWTVerificationException("Invalid role")
 
             // Handle service_role tokens specially
-            if (userRole == "service_role") {
+            if (userRole == UserRole.SERVICE_ROLE) {
                 return TokenValidationResult.valid(
                     subject = subject,
-                    userRole = "platform_admin", // Service role gets platform_admin privileges
+                    userRole = UserRole.PLATFORM_ADMIN, // Service role gets platform_admin privileges
                     entityType = null,
                     entityId = null,
                     scopes = emptyList(),
@@ -192,7 +193,7 @@ class DualJwtValidator @Inject constructor(
                 .verify(token)
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
-            val userRole = jwt.getClaim("role")?.asString()
+            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.of(it) }
                 ?: throw JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()

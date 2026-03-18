@@ -1,11 +1,12 @@
 
 package org.incept5.platform.core.security
 
+import org.incept5.platform.core.model.UserRole
 import java.util.*
 
 // use in tests
 data class TestUser(
-    val userRole: String = "platform_admin",
+    val userRole: UserRole = UserRole.PLATFORM_ADMIN,
     val userId: UUID = UUID.randomUUID(),
     val firstName: String = "John",
     val lastName: String = "Doe",

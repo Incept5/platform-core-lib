@@ -1,5 +1,6 @@
 
 package org.incept5.platform.core.security
+import org.incept5.platform.core.model.UserRole
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
@@ -53,7 +54,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "user123"
-        result.userRole shouldBe "entity_user"
+        result.userRole shouldBe UserRole.ENTITY_USER
         result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-123"
         result.scopes shouldBe emptyList()
@@ -70,7 +71,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe "platform_admin"
+        result.userRole shouldBe UserRole.PLATFORM_ADMIN
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -91,7 +92,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe "entity_admin"
+        result.userRole shouldBe UserRole.ENTITY_ADMIN
         result.entityType shouldBe "merchant"
         result.scopes shouldBe emptyList()
     }
@@ -111,7 +112,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe "platform_admin"
+        result.userRole shouldBe UserRole.PLATFORM_ADMIN
         result.scopes shouldBe emptyList()
     }
 
@@ -144,7 +145,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe "entity_admin"
+        result.userRole shouldBe UserRole.ENTITY_ADMIN
         result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-789"
         result.scopes shouldBe listOf("payment:read", "partner:manage")
@@ -178,7 +179,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-minimal"
-        result.userRole shouldBe "entity_readonly"
+        result.userRole shouldBe UserRole.ENTITY_READONLY
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -438,7 +439,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-rs256"
-        result.userRole shouldBe "entity_admin"
+        result.userRole shouldBe UserRole.ENTITY_ADMIN
         result.clientId shouldBe "client-rs256"
     }
 
@@ -466,7 +467,7 @@ class DualJwtValidatorTest {
         val result = validator.validateToken(token)
         result.isValid shouldBe true
         result.subject shouldBe "client-hs256"
-        result.userRole shouldBe "entity_admin"
+        result.userRole shouldBe UserRole.ENTITY_ADMIN
         result.clientId shouldBe "client-hs256"
     }
 
