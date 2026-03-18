@@ -55,9 +55,9 @@ class SupabaseTokenExchangePluginTest {
         result.getEntityRoles().shouldBeEmpty()
     }
 
-    // AC5: Service role maps to backoffice.admin
+    // AC5: Service role maps to service.admin
     @Test
-    fun `service_role maps to backoffice admin with no entity roles`() {
+    fun `service_role maps to service admin with no entity roles`() {
         val token = createSupabaseToken(
             subject = UUID.randomUUID().toString(),
             role = "service_role"
@@ -66,7 +66,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("backoffice.admin")
+        result.getGlobalRoles().shouldContainExactly("service.admin")
         result.getEntityRoles().shouldBeEmpty()
     }
 
@@ -277,28 +277,32 @@ class SupabaseTokenExchangePluginTest {
         }
     }
 
-    // --- Role mapping unit tests (using internal method) ---
+    // --- Role mapping unit tests (via UserRole.fromLegacy, previously in SupabaseTokenExchangePlugin.mapRole) ---
 
     @Test
-    fun `mapRole covers all UserRole and EntityType combinations`() {
+    fun `UserRole fromLegacy covers all legacy role and entity type combinations`() {
         // Platform-level roles
-        plugin.mapRole("platform_admin", null) shouldBe "backoffice.admin"
-        plugin.mapRole("service_role", null) shouldBe "backoffice.admin"
+        UserRole.fromLegacy("platform_admin", null) shouldBe UserRole.BACKOFFICE_ADMIN
+        UserRole.fromLegacy("service_role", null) shouldBe UserRole.SERVICE_ADMIN
 
         // Partner entity roles
-        plugin.mapRole("entity_admin", "partner") shouldBe "partner.admin"
-        plugin.mapRole("entity_user", "partner") shouldBe "partner.user"
-        plugin.mapRole("entity_readonly", "partner") shouldBe "partner.user"
+        UserRole.fromLegacy("entity_admin", "partner") shouldBe UserRole.PARTNER_ADMIN
+        UserRole.fromLegacy("entity_user", "partner") shouldBe UserRole.PARTNER_USER
+        UserRole.fromLegacy("entity_readonly", "partner") shouldBe UserRole.PARTNER_USER
 
         // Merchant entity roles
-        plugin.mapRole("entity_admin", "merchant") shouldBe "merchant.admin"
-        plugin.mapRole("entity_user", "merchant") shouldBe "merchant.user"
-        plugin.mapRole("entity_readonly", "merchant") shouldBe "merchant.user"
+        UserRole.fromLegacy("entity_admin", "merchant") shouldBe UserRole.MERCHANT_ADMIN
+        UserRole.fromLegacy("entity_user", "merchant") shouldBe UserRole.MERCHANT_USER
+        UserRole.fromLegacy("entity_readonly", "merchant") shouldBe UserRole.MERCHANT_USER
 
         // Fallback for null entity type on entity roles
-        plugin.mapRole("entity_admin", null) shouldBe "partner.user"
-        plugin.mapRole("entity_user", null) shouldBe "partner.user"
-        plugin.mapRole("entity_readonly", null) shouldBe "partner.user"
+        UserRole.fromLegacy("entity_admin", null) shouldBe UserRole.PARTNER_USER
+        UserRole.fromLegacy("entity_user", null) shouldBe UserRole.PARTNER_USER
+        UserRole.fromLegacy("entity_readonly", null) shouldBe UserRole.PARTNER_USER
+
+        // New role names pass through
+        UserRole.fromLegacy("backoffice.admin", null) shouldBe UserRole.BACKOFFICE_ADMIN
+        UserRole.fromLegacy("partner.admin", null) shouldBe UserRole.PARTNER_ADMIN
     }
 
     // --- Helper methods ---

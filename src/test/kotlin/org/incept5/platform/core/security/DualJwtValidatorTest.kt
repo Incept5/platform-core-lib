@@ -54,7 +54,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "user123"
-        result.userRole shouldBe UserRole.ENTITY_USER
+        result.userRole shouldBe UserRole.PARTNER_USER
         result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-123"
         result.scopes shouldBe emptyList()
@@ -62,7 +62,7 @@ class DualJwtValidatorTest {
     }
 
     @Test
-    fun `should validate Supabase service role token and map to platform admin`() {
+    fun `should validate Supabase service role token and map to service admin`() {
         // Given
         val token = createSupabaseServiceRoleToken()
 
@@ -71,7 +71,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.PLATFORM_ADMIN
+        result.userRole shouldBe UserRole.SERVICE_ADMIN
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -92,7 +92,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.ENTITY_ADMIN
+        result.userRole shouldBe UserRole.MERCHANT_ADMIN
         result.entityType shouldBe "merchant"
         result.scopes shouldBe emptyList()
     }
@@ -112,7 +112,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.PLATFORM_ADMIN
+        result.userRole shouldBe UserRole.BACKOFFICE_ADMIN
         result.scopes shouldBe emptyList()
     }
 
@@ -145,7 +145,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe UserRole.ENTITY_ADMIN
+        result.userRole shouldBe UserRole.PARTNER_ADMIN
         result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-789"
         result.scopes shouldBe listOf("payment:read", "partner:manage")
@@ -179,7 +179,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-minimal"
-        result.userRole shouldBe UserRole.ENTITY_READONLY
+        result.userRole shouldBe UserRole.PARTNER_USER
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -424,12 +424,13 @@ class DualJwtValidatorTest {
             hmacFallbackEnabled = false
         )
 
-        // RS256-signed platform token
+        // RS256-signed platform token with partner context
         val token = JWT.create()
             .withSubject("client-rs256")
             .withIssuer("$baseApiUrl$platformOauthPath")
             .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
+            .withClaim("app_metadata", mapOf("entity_type" to "partner", "entity_id" to "partner-rs256"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(Algorithm.RSA256(null, privateKey))
 
@@ -439,7 +440,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-rs256"
-        result.userRole shouldBe UserRole.ENTITY_ADMIN
+        result.userRole shouldBe UserRole.PARTNER_ADMIN
         result.clientId shouldBe "client-rs256"
     }
 
@@ -461,13 +462,14 @@ class DualJwtValidatorTest {
             .withIssuer("$baseApiUrl$platformOauthPath")
             .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
+            .withClaim("app_metadata", mapOf("entity_type" to "partner", "entity_id" to "partner-hs256"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
         val result = validator.validateToken(token)
         result.isValid shouldBe true
         result.subject shouldBe "client-hs256"
-        result.userRole shouldBe UserRole.ENTITY_ADMIN
+        result.userRole shouldBe UserRole.PARTNER_ADMIN
         result.clientId shouldBe "client-hs256"
     }
 

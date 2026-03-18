@@ -6,7 +6,7 @@ import java.util.*
 
 // use in tests
 data class TestUser(
-    val userRole: UserRole = UserRole.PLATFORM_ADMIN,
+    val userRole: UserRole = UserRole.BACKOFFICE_ADMIN,
     val userId: UUID = UUID.randomUUID(),
     val firstName: String = "John",
     val lastName: String = "Doe",

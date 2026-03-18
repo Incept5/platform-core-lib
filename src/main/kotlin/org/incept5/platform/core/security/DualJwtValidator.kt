@@ -145,25 +145,15 @@ class DualJwtValidator @Inject constructor(
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
 
-            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.of(it) }
+            val rawRole = jwt.getClaim("role")?.asString()
                 ?: throw JWTVerificationException("Invalid role")
-
-            // Handle service_role tokens specially
-            if (userRole == UserRole.SERVICE_ROLE) {
-                return TokenValidationResult.valid(
-                    subject = subject,
-                    userRole = UserRole.PLATFORM_ADMIN, // Service role gets platform_admin privileges
-                    entityType = null,
-                    entityId = null,
-                    scopes = emptyList(),
-                    clientId = null,
-                    tokenSource = TokenSource.SUPABASE
-                )
-            }
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
             val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
+
+            // Map legacy JWT role names to new roles at parse time
+            val userRole = UserRole.fromLegacy(rawRole, entityType)
 
             // Scopes are no longer derived from role — authz-lib handles permissions
             val scopes = emptyList<String>()
@@ -193,12 +183,15 @@ class DualJwtValidator @Inject constructor(
                 .verify(token)
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
-            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.of(it) }
+            val rawRole = jwt.getClaim("role")?.asString()
                 ?: throw JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
             val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
+
+            // Map legacy JWT role names to new roles
+            val userRole = UserRole.fromLegacy(rawRole, entityType)
 
             // Extract explicit scopes from FanFair tokens
             val scopes = jwt.getClaim("scopes")?.asList(String::class.java) ?: emptyList()

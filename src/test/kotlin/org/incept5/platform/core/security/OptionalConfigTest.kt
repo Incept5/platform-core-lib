@@ -72,6 +72,7 @@ class OptionalConfigTest {
             .withIssuer("$baseApiUrl$platformOauthPath")
             .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
+            .withClaim("app_metadata", mapOf("entity_type" to "partner", "entity_id" to "partner-123"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
@@ -80,7 +81,7 @@ class OptionalConfigTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe UserRole.ENTITY_ADMIN
+        result.userRole shouldBe UserRole.PARTNER_ADMIN
     }
 
     @Test
@@ -170,6 +171,6 @@ class OptionalConfigTest {
         // Then - Supabase validation should work (uses jwtSecret)
         result.isValid shouldBe true
         result.subject shouldBe "supabase-user"
-        result.userRole shouldBe UserRole.PLATFORM_ADMIN
+        result.userRole shouldBe UserRole.BACKOFFICE_ADMIN
     }
 }

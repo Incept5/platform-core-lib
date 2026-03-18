@@ -15,25 +15,43 @@ interface UserRole {
     val value: String
 
     companion object {
-        // New hierarchical role names (from authz-lib YAML config)
         val BACKOFFICE_ADMIN = of("backoffice.admin")
+        val SERVICE_ADMIN = of("service.admin")
         val PARTNER_ADMIN = of("partner.admin")
         val PARTNER_USER = of("partner.user")
         val MERCHANT_ADMIN = of("merchant.admin")
         val MERCHANT_USER = of("merchant.user")
 
-        // Legacy role names (from Supabase JWT claims — mapped by SupabaseTokenExchangePlugin)
-        val PLATFORM_ADMIN = of("platform_admin")
-        val SERVICE_ROLE = of("service_role")
-        val ENTITY_ADMIN = of("entity_admin")
-        val ENTITY_USER = of("entity_user")
-        val ENTITY_READONLY = of("entity_readonly")
-
         /**
-         * Creates a UserRole from a raw string value.
-         * Accepts both legacy (platform_admin) and new (backoffice.admin) role names.
+         * Creates a UserRole from a string value.
          */
         fun of(value: String): UserRole = SimpleUserRole(value)
+
+        /**
+         * Maps legacy Supabase JWT role names to new role names.
+         * Used by DualJwtValidator when parsing JWT claims that still carry old names.
+         */
+        fun fromLegacy(legacyRole: String, entityType: String?): UserRole = when (legacyRole) {
+            "platform_admin" -> BACKOFFICE_ADMIN
+            "service_role" -> SERVICE_ADMIN
+            "entity_admin" -> when (entityType) {
+                "partner" -> PARTNER_ADMIN
+                "merchant" -> MERCHANT_ADMIN
+                else -> PARTNER_USER
+            }
+            "entity_user" -> when (entityType) {
+                "partner" -> PARTNER_USER
+                "merchant" -> MERCHANT_USER
+                else -> PARTNER_USER
+            }
+            "entity_readonly" -> when (entityType) {
+                "partner" -> PARTNER_USER
+                "merchant" -> MERCHANT_USER
+                else -> PARTNER_USER
+            }
+            // Already a new role name — pass through
+            else -> of(legacyRole)
+        }
     }
 }
 
