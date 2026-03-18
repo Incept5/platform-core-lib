@@ -81,7 +81,7 @@ class OptionalConfigTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe UserRole.PARTNER_ADMIN
+        result.userRole shouldBe UserRole.of("entity_admin")
     }
 
     @Test
@@ -171,6 +171,6 @@ class OptionalConfigTest {
         // Then - Supabase validation should work (uses jwtSecret)
         result.isValid shouldBe true
         result.subject shouldBe "supabase-user"
-        result.userRole shouldBe UserRole.BACKOFFICE_ADMIN
+        result.userRole shouldBe UserRole.of("platform_admin")
     }
 }

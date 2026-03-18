@@ -16,9 +16,10 @@ import java.util.UUID
  * Validates the incoming JWT token using the existing validator and maps the
  * result to a PrincipalContext with appropriate global roles and entity roles.
  *
- * Note: Legacy role mapping (platform_admin → backoffice.admin etc.) is now
- * handled by DualJwtValidator via UserRole.fromLegacy(). This plugin simply
- * converts the validated result to a PrincipalContext.
+ * Legacy role mapping (platform_admin → backoffice.admin etc.) lives here
+ * because the DualJwtValidator passes raw JWT role strings through without
+ * interpretation — role name knowledge belongs in the consuming application,
+ * not in the core library.
  */
 @Singleton
 class SupabaseTokenExchangePlugin(
@@ -41,8 +42,8 @@ class SupabaseTokenExchangePlugin(
             UUID.nameUUIDFromBytes(result.subject.toByteArray())
         }
 
-        val globalRole = result.userRole.value
-        val entityRoles = buildEntityRoles(result)
+        val globalRole = mapRole(result.userRole.value, result.entityType)
+        val entityRoles = buildEntityRoles(result, globalRole)
 
         log.debug("Token exchanged: subject=${result.subject}, globalRole=$globalRole, entityRoles=$entityRoles")
 
@@ -54,16 +55,42 @@ class SupabaseTokenExchangePlugin(
     }
 
     /**
+     * Maps JWT role strings to authz-lib role names.
+     * Handles both legacy (platform_admin, entity_admin, etc.) and new role names (pass-through).
+     */
+    internal fun mapRole(role: String, entityType: String?): String = when (role) {
+        "platform_admin" -> "backoffice.admin"
+        "service_role" -> "service.admin"
+        "entity_admin" -> when (entityType) {
+            "partner" -> "partner.admin"
+            "merchant" -> "merchant.admin"
+            else -> "partner.user"
+        }
+        "entity_user" -> when (entityType) {
+            "partner" -> "partner.user"
+            "merchant" -> "merchant.user"
+            else -> "partner.user"
+        }
+        "entity_readonly" -> when (entityType) {
+            "partner" -> "partner.user"
+            "merchant" -> "merchant.user"
+            else -> "partner.user"
+        }
+        // New role names pass through unchanged
+        else -> role
+    }
+
+    /**
      * Builds entity-scoped roles from the token validation result.
      * Only created when both entityType and entityId are present.
      */
-    private fun buildEntityRoles(result: TokenValidationResult): List<EntityRole> {
+    private fun buildEntityRoles(result: TokenValidationResult, mappedRole: String): List<EntityRole> {
         if (result.entityType == null || result.entityId == null) return emptyList()
 
         return listOf(
             EntityRole(
                 type = result.entityType!!.lowercase(),
-                roles = listOf(result.userRole.value),
+                roles = listOf(mappedRole),
                 ids = listOf(result.entityId!!)
             )
         )

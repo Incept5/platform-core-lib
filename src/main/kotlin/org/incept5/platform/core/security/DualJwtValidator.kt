@@ -152,8 +152,8 @@ class DualJwtValidator @Inject constructor(
             val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
 
-            // Map legacy JWT role names to new roles at parse time
-            val userRole = UserRole.fromLegacy(rawRole, entityType)
+            // Pass raw role string through — legacy mapping handled by SupabaseTokenExchangePlugin
+            val userRole = UserRole.of(rawRole)
 
             // Scopes are no longer derived from role — authz-lib handles permissions
             val scopes = emptyList<String>()
@@ -190,8 +190,8 @@ class DualJwtValidator @Inject constructor(
             val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
 
-            // Map legacy JWT role names to new roles
-            val userRole = UserRole.fromLegacy(rawRole, entityType)
+            // Pass raw role string through
+            val userRole = UserRole.of(rawRole)
 
             // Extract explicit scopes from FanFair tokens
             val scopes = jwt.getClaim("scopes")?.asList(String::class.java) ?: emptyList()

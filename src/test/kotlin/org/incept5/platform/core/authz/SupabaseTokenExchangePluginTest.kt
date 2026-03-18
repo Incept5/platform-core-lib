@@ -277,32 +277,32 @@ class SupabaseTokenExchangePluginTest {
         }
     }
 
-    // --- Role mapping unit tests (via UserRole.fromLegacy, previously in SupabaseTokenExchangePlugin.mapRole) ---
+    // --- Role mapping unit tests (via plugin.mapRole) ---
 
     @Test
-    fun `UserRole fromLegacy covers all legacy role and entity type combinations`() {
+    fun `mapRole covers all legacy role and entity type combinations`() {
         // Platform-level roles
-        UserRole.fromLegacy("platform_admin", null) shouldBe UserRole.BACKOFFICE_ADMIN
-        UserRole.fromLegacy("service_role", null) shouldBe UserRole.SERVICE_ADMIN
+        plugin.mapRole("platform_admin", null) shouldBe "backoffice.admin"
+        plugin.mapRole("service_role", null) shouldBe "service.admin"
 
         // Partner entity roles
-        UserRole.fromLegacy("entity_admin", "partner") shouldBe UserRole.PARTNER_ADMIN
-        UserRole.fromLegacy("entity_user", "partner") shouldBe UserRole.PARTNER_USER
-        UserRole.fromLegacy("entity_readonly", "partner") shouldBe UserRole.PARTNER_USER
+        plugin.mapRole("entity_admin", "partner") shouldBe "partner.admin"
+        plugin.mapRole("entity_user", "partner") shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", "partner") shouldBe "partner.user"
 
         // Merchant entity roles
-        UserRole.fromLegacy("entity_admin", "merchant") shouldBe UserRole.MERCHANT_ADMIN
-        UserRole.fromLegacy("entity_user", "merchant") shouldBe UserRole.MERCHANT_USER
-        UserRole.fromLegacy("entity_readonly", "merchant") shouldBe UserRole.MERCHANT_USER
+        plugin.mapRole("entity_admin", "merchant") shouldBe "merchant.admin"
+        plugin.mapRole("entity_user", "merchant") shouldBe "merchant.user"
+        plugin.mapRole("entity_readonly", "merchant") shouldBe "merchant.user"
 
         // Fallback for null entity type on entity roles
-        UserRole.fromLegacy("entity_admin", null) shouldBe UserRole.PARTNER_USER
-        UserRole.fromLegacy("entity_user", null) shouldBe UserRole.PARTNER_USER
-        UserRole.fromLegacy("entity_readonly", null) shouldBe UserRole.PARTNER_USER
+        plugin.mapRole("entity_admin", null) shouldBe "partner.user"
+        plugin.mapRole("entity_user", null) shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", null) shouldBe "partner.user"
 
         // New role names pass through
-        UserRole.fromLegacy("backoffice.admin", null) shouldBe UserRole.BACKOFFICE_ADMIN
-        UserRole.fromLegacy("partner.admin", null) shouldBe UserRole.PARTNER_ADMIN
+        plugin.mapRole("backoffice.admin", null) shouldBe "backoffice.admin"
+        plugin.mapRole("partner.admin", null) shouldBe "partner.admin"
     }
 
     // --- Helper methods ---

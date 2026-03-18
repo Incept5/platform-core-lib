@@ -54,7 +54,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "user123"
-        result.userRole shouldBe UserRole.PARTNER_USER
+        result.userRole shouldBe UserRole.of("entity_user")
         result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-123"
         result.scopes shouldBe emptyList()
@@ -71,7 +71,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.SERVICE_ADMIN
+        result.userRole shouldBe UserRole.of("service_role")
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -92,7 +92,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.MERCHANT_ADMIN
+        result.userRole shouldBe UserRole.of("entity_admin")
         result.entityType shouldBe "merchant"
         result.scopes shouldBe emptyList()
     }
@@ -112,7 +112,7 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.BACKOFFICE_ADMIN
+        result.userRole shouldBe UserRole.of("platform_admin")
         result.scopes shouldBe emptyList()
     }
 
@@ -145,7 +145,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe UserRole.PARTNER_ADMIN
+        result.userRole shouldBe UserRole.of("entity_admin")
         result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-789"
         result.scopes shouldBe listOf("payment:read", "partner:manage")
@@ -179,7 +179,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-minimal"
-        result.userRole shouldBe UserRole.PARTNER_USER
+        result.userRole shouldBe UserRole.of("entity_readonly")
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -440,7 +440,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-rs256"
-        result.userRole shouldBe UserRole.PARTNER_ADMIN
+        result.userRole shouldBe UserRole.of("entity_admin")
         result.clientId shouldBe "client-rs256"
     }
 
@@ -469,7 +469,7 @@ class DualJwtValidatorTest {
         val result = validator.validateToken(token)
         result.isValid shouldBe true
         result.subject shouldBe "client-hs256"
-        result.userRole shouldBe UserRole.PARTNER_ADMIN
+        result.userRole shouldBe UserRole.of("entity_admin")
         result.clientId shouldBe "client-hs256"
     }
 
