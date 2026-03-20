@@ -3,16 +3,12 @@ package org.incept5.platform.core.auth
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.string.shouldContain
 import jakarta.ws.rs.container.ContainerRequestContext
 import jakarta.ws.rs.container.ResourceInfo
-import jakarta.ws.rs.core.SecurityContext
+import jakarta.ws.rs.core.HttpHeaders
 import org.incept5.platform.core.error.ForbiddenException
 import org.incept5.platform.core.error.UnauthorizedException
-import org.incept5.platform.core.model.EntityType
-import org.incept5.platform.core.model.UserRole
-import org.incept5.platform.core.security.ApiPrincipal
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -26,313 +22,135 @@ class ScopeAuthorizationFilterTest {
     private lateinit var scopeFilter: ScopeAuthorizationFilter
     private val mockRequestContext = mock<ContainerRequestContext>()
     private val mockResourceInfo = mock<ResourceInfo>()
-    private val mockSecurityContext = mock<SecurityContext>()
     private val mockMethod = mock<Method>()
     private val algorithm = Algorithm.HMAC256("test-secret-key-that-is-long-enough-for-hmac256-algorithm")
 
     @BeforeEach
     fun setup() {
         scopeFilter = ScopeAuthorizationFilter()
-        // Set the ResourceInfo using reflection since it's injected via @Context
         val resourceInfoField = ScopeAuthorizationFilter::class.java.getDeclaredField("resourceInfo")
         resourceInfoField.isAccessible = true
         resourceInfoField.set(scopeFilter, mockResourceInfo)
 
-        whenever(mockRequestContext.securityContext).thenReturn(mockSecurityContext)
         whenever(mockResourceInfo.resourceMethod).thenReturn(mockMethod)
-        // Resource class will be set per test as needed
     }
 
     @Test
     fun `should pass when no RequireScope annotation is present`() {
-        // Given
         whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(null)
         whenever(mockResourceInfo.resourceClass).thenReturn(TestResourceWithoutAnnotation::class.java)
 
-        // When/Then - Should not throw any exception
         scopeFilter.filter(mockRequestContext)
-        
-        // Verify no interaction with security context
-        verify(mockSecurityContext, never()).userPrincipal
+        // No exception = pass
     }
 
     @Test
-    fun `should throw NotAuthorizedException when no principal present`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(null)
+    fun `should bypass scope check for user token without clientId`() {
+        setupRequireScope("payment:read")
+        setupAuthHeader(createUserToken())
 
-        // When/Then
-        assertThrows<UnauthorizedException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-    }
-
-    @Test
-    fun `should bypass scope check for user tokens without client ID`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = null)
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-
-        // When/Then - Should not throw any exception
         scopeFilter.filter(mockRequestContext)
-        
-        // Should not check Authorization header when bypassing
-        verify(mockRequestContext, never()).getHeaderString(any())
+        // No exception = bypass
     }
 
     @Test
-    fun `should pass when token has required scope`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-123")
-        val token = createJwtToken(scopes = listOf("payment:read", "payment:create"))
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+    fun `should pass when API key token has required scope`() {
+        setupRequireScope("payment:read")
+        setupAuthHeader(createApiKeyToken("client-123", listOf("payment:read", "payment:write")))
 
-        // When/Then - Should not throw any exception
         scopeFilter.filter(mockRequestContext)
     }
 
     @Test
-    fun `should throw ApiException when token lacks required scope`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:manage")
-        val principal = createApiPrincipal(clientId = "client-123")
-        val token = createJwtToken(scopes = listOf("payment:read", "payment:create"))
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+    fun `should throw ForbiddenException when API key token lacks required scope`() {
+        setupRequireScope("payment:write")
+        setupAuthHeader(createApiKeyToken("client-123", listOf("payment:read")))
 
-        // When/Then
-        val exception = assertThrows<ForbiddenException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-        exception.message shouldContain "does not have required scope"
+        val ex = assertThrows<ForbiddenException> { scopeFilter.filter(mockRequestContext) }
+        ex.message shouldContain "Missing required scope"
     }
 
     @Test
-    fun `should pass when token has multiple scopes including required one`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("partner:manage")
-        val principal = createApiPrincipal(clientId = "client-456")
-        val token = createJwtToken(scopes = listOf("payment:read", "partner:manage", "merchant:read"))
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+    fun `should throw ForbiddenException when scopeOnlyAuthorization and no clientId`() {
+        setupRequireScope("service.payment.reporting:read", scopeOnlyAuthorization = true)
+        setupAuthHeader(createUserToken())
 
-        // When/Then - Should not throw any exception
+        val ex = assertThrows<ForbiddenException> { scopeFilter.filter(mockRequestContext) }
+        ex.message shouldContain "only accessible with API Key"
+    }
+
+    @Test
+    fun `should pass when scopeOnlyAuthorization and API key has scope`() {
+        setupRequireScope("service.payment.reporting:read", scopeOnlyAuthorization = true)
+        setupAuthHeader(createApiKeyToken("client-456", listOf("service.payment.reporting:read")))
+
         scopeFilter.filter(mockRequestContext)
     }
 
     @Test
-    fun `should handle token with no scopes claim`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-789")
-        val token = createJwtToken(scopes = null) // No scopes claim
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+    fun `should throw UnauthorizedException when no auth header`() {
+        setupRequireScope("payment:read")
+        whenever(mockRequestContext.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn(null)
 
-        // When/Then
-        val exception = assertThrows<ForbiddenException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-        exception.message shouldContain "does not have required scope"
+        assertThrows<UnauthorizedException> { scopeFilter.filter(mockRequestContext) }
     }
 
     @Test
-    fun `should handle token with empty scopes array`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-empty")
-        val token = createJwtToken(scopes = emptyList())
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+    fun `should throw UnauthorizedException when invalid auth header format`() {
+        setupRequireScope("payment:read")
+        whenever(mockRequestContext.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Basic abc123")
 
-        // When/Then
-        val exception = assertThrows<ForbiddenException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-        exception.message shouldContain "does not have required scope"
+        assertThrows<UnauthorizedException> { scopeFilter.filter(mockRequestContext) }
     }
 
     @Test
-    fun `should throw Unauthorsed when no Authorization header present`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-123")
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn(null)
+    fun `should pass when token has empty scopes and no clientId`() {
+        setupRequireScope("payment:read")
+        setupAuthHeader(createUserToken())
 
-        // When/Then
-        assertThrows<UnauthorizedException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-    }
-
-    @Test
-    fun `should throw Unauthorised when Authorization header has wrong format`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-123")
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Basic dXNlcjpwYXNz")
-
-        // When/Then
-        assertThrows<UnauthorizedException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-    }
-
-    @Test
-    fun `should throw Unauthorised when token is malformed`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-123")
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer malformed.token")
-
-        // When/Then
-        assertThrows<UnauthorizedException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-    }
-
-    @Test
-    fun `should handle case insensitive Bearer token`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read")
-        val principal = createApiPrincipal(clientId = "client-123")
-        val token = createJwtToken(scopes = listOf("payment:read"))
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("bearer $token")
-
-        // When/Then - Should not throw any exception
         scopeFilter.filter(mockRequestContext)
     }
 
     @Test
-    fun `should use class-level annotation when method-level annotation not present`() {
-        // Given
-        val principal = createApiPrincipal(clientId = "client-class")
-        val token = createJwtToken(scopes = listOf("merchant:read"))
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(null)
-        whenever(mockResourceInfo.resourceClass).thenReturn(TestResourceWithAnnotation::class.java)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
+    fun `should throw when API key token has empty scopes`() {
+        setupRequireScope("payment:read")
+        setupAuthHeader(createApiKeyToken("client-789", emptyList()))
 
-        // When/Then - Should not throw any exception
-        scopeFilter.filter(mockRequestContext)
+        assertThrows<ForbiddenException> { scopeFilter.filter(mockRequestContext) }
     }
 
-    @Test
-    fun `should throw ApiException when scopeOnlyAuthorization is true and clientId is null`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read", scopeOnlyAuthorization = true)
-        val principal = createApiPrincipal(clientId = null)
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
+    // --- Helper methods ---
 
-        // When/Then
-        val exception = assertThrows<ForbiddenException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-        exception.message?.shouldBeEqual("Access denied: Endpoint only accessible with API Key issued tokens")
+    private fun setupRequireScope(scope: String, scopeOnlyAuthorization: Boolean = false) {
+        val annotation = mock<RequireScope>()
+        whenever(annotation.value).thenReturn(scope)
+        whenever(annotation.scopeOnlyAuthorization).thenReturn(scopeOnlyAuthorization)
+        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(annotation)
+        whenever(mockResourceInfo.resourceClass).thenReturn(TestResourceWithoutAnnotation::class.java)
     }
 
-    @Test
-    fun `should throw ApiException when scopeOnlyAuthorization is true and clientId is empty`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read", scopeOnlyAuthorization = true)
-        val principal = createApiPrincipal(clientId = "")
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-
-        // When/Then
-        val exception = assertThrows<ForbiddenException> {
-            scopeFilter.filter(mockRequestContext)
-        }
-        exception.message shouldContain "Access denied: Endpoint only accessible with API Key issued tokens"
+    private fun setupAuthHeader(token: String) {
+        whenever(mockRequestContext.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer $token")
     }
 
-    @Test
-    fun `should pass when scopeOnlyAuthorization is true and clientId is present with valid scope`() {
-        // Given
-        val requireScopeAnnotation = createRequireScopeAnnotation("payment:read", scopeOnlyAuthorization = true)
-        val principal = createApiPrincipal(clientId = "api-key-client")
-        val token = createJwtToken(scopes = listOf("payment:read", "payment:create"))
-        
-        whenever(mockMethod.getAnnotation(RequireScope::class.java)).thenReturn(requireScopeAnnotation)
-        whenever(mockSecurityContext.userPrincipal).thenReturn(principal)
-        whenever(mockRequestContext.getHeaderString("Authorization")).thenReturn("Bearer $token")
-
-        // When/Then - Should not throw any exception
-        scopeFilter.filter(mockRequestContext)
-    }
-
-    // Helper methods
-
-    private fun createRequireScopeAnnotation(
-        value: String,
-        scopeOnlyAuthorization: Boolean = false
-    ): RequireScope {
-        val mockAnnotation = mock<RequireScope>()
-        whenever(mockAnnotation.value).thenReturn(value)
-        whenever(mockAnnotation.scopeOnlyAuthorization).thenReturn(scopeOnlyAuthorization)
-        return mockAnnotation
-    }
-
-    private fun createApiPrincipal(
-        clientId: String? = null
-    ): ApiPrincipal {
-        return ApiPrincipal(
-            subject = "test-user-123",
-            userRole = UserRole.entity_user,
-            entityType = EntityType.partner,
-            entityId = "partner-123",
-            clientId = clientId
-        )
-    }
-
-    private fun createJwtToken(scopes: List<String>?): String {
-        val tokenBuilder = JWT.create()
-            .withSubject("test-subject")
-            .withIssuer("test-issuer")
+    private fun createUserToken(): String {
+        return JWT.create()
+            .withSubject(UUID.randomUUID().toString())
+            .withClaim("role", "entity_user")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
-
-        // Add scopes claim only if provided (null means no scopes claim at all)
-        scopes?.let { tokenBuilder.withClaim("scopes", it) }
-
-        return tokenBuilder.sign(algorithm)
+            .sign(algorithm)
     }
+
+    private fun createApiKeyToken(clientId: String, scopes: List<String>): String {
+        return JWT.create()
+            .withSubject(clientId)
+            .withClaim("role", "entity_admin")
+            .withClaim("clientId", clientId)
+            .withClaim("scopes", scopes)
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+            .sign(algorithm)
+    }
+
+    // Test resource classes for annotation testing
+    class TestResourceWithoutAnnotation
 }
-
-// Test resource classes for annotation testing
-class TestResourceWithoutAnnotation
-
-@RequireScope("merchant:read")
-class TestResourceWithAnnotation

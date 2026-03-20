@@ -11,7 +11,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.incept5.platform.core.error.ApiException
 import org.incept5.platform.core.model.UserRole
 import java.util.Base64
-import org.incept5.platform.core.model.EntityType
 import org.incept5.error.ErrorCategory
 import org.jboss.logging.Logger
 import java.security.interfaces.RSAPrivateKey
@@ -146,36 +145,18 @@ class DualJwtValidator @Inject constructor(
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
 
-            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.valueOf(it) }
+            val rawRole = jwt.getClaim("role")?.asString()
                 ?: throw JWTVerificationException("Invalid role")
 
-
-            // Handle service_role tokens specially
-            if (userRole == UserRole.service_role) {
-                return TokenValidationResult.valid(
-                    subject = subject,
-                    userRole = UserRole.platform_admin, // Service role gets platform_admin privileges
-                    entityType = null,
-                    entityId = null,
-                    scopes = deriveScopesFromRole(UserRole.platform_admin, null),
-                    clientId = null,
-                    tokenSource = TokenSource.SUPABASE
-                )
-            }
-
-
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
-            val entityType = appMetadata?.get("entity_type")?.toString()?.let {
-                try {
-                    EntityType.valueOf(it)
-                } catch (e: IllegalArgumentException) {
-                    null // Allow null entity type for service roles
-                }
-            }
+            val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
 
-            // Derive scopes from role and entity type for Supabase tokens
-            val scopes = deriveScopesFromRole(userRole, entityType)
+            // Pass raw role string through — legacy mapping handled by SupabaseTokenExchangePlugin
+            val userRole = UserRole.of(rawRole)
+
+            // Scopes are no longer derived from role — authz-lib handles permissions
+            val scopes = emptyList<String>()
 
             return TokenValidationResult.valid(
                 subject = subject,
@@ -202,12 +183,15 @@ class DualJwtValidator @Inject constructor(
                 .verify(token)
 
             val subject = jwt.subject ?: throw JWTVerificationException("No subject claim")
-            val userRole = jwt.getClaim("role")?.asString()?.let { UserRole.valueOf(it) }
+            val rawRole = jwt.getClaim("role")?.asString()
                 ?: throw JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
-            val entityType = appMetadata?.get("entity_type")?.toString()?.let { EntityType.valueOf(it) }
+            val entityType = appMetadata?.get("entity_type")?.toString()
             val entityId = appMetadata?.get("entity_id")?.toString()
+
+            // Pass raw role string through
+            val userRole = UserRole.of(rawRole)
 
             // Extract explicit scopes from FanFair tokens
             val scopes = jwt.getClaim("scopes")?.asList(String::class.java) ?: emptyList()
@@ -230,39 +214,8 @@ class DualJwtValidator @Inject constructor(
         }
     }
 
-    private fun deriveScopesFromRole(role: UserRole, entityType: EntityType?): List<String> {
-        return when (role) {
-            UserRole.platform_admin -> listOf(
-                "payment:create", "payment:read", "payment:manage",
-                "partner:create", "partner:read", "partner:manage",
-                "merchant:create", "merchant:read", "merchant:manage"
-            )
-            UserRole.entity_admin -> when (entityType) {
-                EntityType.partner -> listOf(
-                    "payment:create", "payment:read", "partner:manage",
-                    "merchant:create", "merchant:read", "merchant:manage"
-                )
-                EntityType.merchant -> listOf(
-                    "payment:create", "payment:read", "merchant:manage"
-                )
-                else -> emptyList()
-            }
-            UserRole.entity_user -> when (entityType) {
-                EntityType.partner -> listOf("payment:create", "payment:read")
-                EntityType.merchant -> listOf("payment:create", "payment:read")
-                else -> emptyList()
-            }
-            UserRole.entity_readonly -> listOf("payment:read")
-            UserRole.service_role -> listOf(
-                "payment:create", "payment:read", "payment:manage",
-                "partner:create", "partner:read", "partner:manage",
-                "merchant:create", "merchant:read", "merchant:manage"
-            )
-        }
-    }
 
-
-    fun getEntityType(token: String): EntityType? = validateToken(token).entityType
+    fun getEntityType(token: String): String? = validateToken(token).entityType
     fun getEntityId(token: String): String? = validateToken(token).entityId
 
     /**

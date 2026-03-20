@@ -1,13 +1,12 @@
 
 package org.incept5.platform.core.security
+import org.incept5.platform.core.model.UserRole
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import org.incept5.platform.core.model.EntityType
-import org.incept5.platform.core.model.UserRole
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -44,8 +43,8 @@ class DualJwtValidatorTest {
         // Given
         val token = createSupabaseToken(
             subject = "user123",
-            role = UserRole.entity_user,
-            entityType = EntityType.partner,
+            role = "entity_user",
+            entityType = "partner",
             entityId = "partner-123"
         )
 
@@ -55,15 +54,15 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "user123"
-        result.userRole shouldBe UserRole.entity_user
-        result.entityType shouldBe EntityType.partner
+        result.userRole shouldBe UserRole.of("entity_user")
+        result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-123"
-        result.scopes shouldBe listOf("payment:create", "payment:read")
+        result.scopes shouldBe emptyList()
         result.clientId shouldBe null
     }
 
     @Test
-    fun `should validate Supabase service role token and map to platform admin`() {
+    fun `should validate Supabase service role token and map to service admin`() {
         // Given
         val token = createSupabaseServiceRoleToken()
 
@@ -72,23 +71,19 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.platform_admin
+        result.userRole shouldBe UserRole.of("service_role")
         result.entityType shouldBe null
         result.entityId shouldBe null
-        result.scopes shouldBe listOf(
-            "payment:create", "payment:read", "payment:manage",
-            "partner:create", "partner:read", "partner:manage",
-            "merchant:create", "merchant:read", "merchant:manage"
-        )
+        result.scopes shouldBe emptyList()
     }
 
     @Test
-    fun `should validate Supabase entity admin token with correct scopes`() {
+    fun `should validate Supabase entity admin token`() {
         // Given
         val token = createSupabaseToken(
             subject = "admin123",
-            role = UserRole.entity_admin,
-            entityType = EntityType.merchant,
+            role = "entity_admin",
+            entityType = "merchant",
             entityId = "merchant-456"
         )
 
@@ -97,11 +92,9 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.entity_admin
-        result.entityType shouldBe EntityType.merchant
-        result.scopes shouldBe listOf(
-            "payment:create", "payment:read", "merchant:manage"
-        )
+        result.userRole shouldBe UserRole.of("entity_admin")
+        result.entityType shouldBe "merchant"
+        result.scopes shouldBe emptyList()
     }
 
     @Test
@@ -109,7 +102,7 @@ class DualJwtValidatorTest {
         // Given
         val token = createSupabaseToken(
             subject = "platform-admin-123",
-            role = UserRole.platform_admin,
+            role = "platform_admin",
             entityType = null,
             entityId = null
         )
@@ -119,12 +112,8 @@ class DualJwtValidatorTest {
 
         // Then
         result.isValid shouldBe true
-        result.userRole shouldBe UserRole.platform_admin
-        result.scopes shouldBe listOf(
-            "payment:create", "payment:read", "payment:manage",
-            "partner:create", "partner:read", "partner:manage",
-            "merchant:create", "merchant:read", "merchant:manage"
-        )
+        result.userRole shouldBe UserRole.of("platform_admin")
+        result.scopes shouldBe emptyList()
     }
 
     // Platform Token Tests
@@ -134,8 +123,8 @@ class DualJwtValidatorTest {
         // Given
         val token = createPlatformToken(
             subject = "client-123",
-            role = UserRole.entity_admin,
-            entityType = EntityType.partner,
+            role = "entity_admin",
+            entityType = "partner",
             entityId = "partner-789",
             scopes = listOf("payment:read", "partner:manage")
         )
@@ -156,8 +145,8 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
-        result.userRole shouldBe UserRole.entity_admin
-        result.entityType shouldBe EntityType.partner
+        result.userRole shouldBe UserRole.of("entity_admin")
+        result.entityType shouldBe "partner"
         result.entityId shouldBe "partner-789"
         result.scopes shouldBe listOf("payment:read", "partner:manage")
         result.clientId shouldBe "client-123"
@@ -168,7 +157,7 @@ class DualJwtValidatorTest {
         // Given
         val token = createPlatformToken(
             subject = "client-minimal",
-            role = UserRole.entity_readonly,
+            role = "entity_readonly",
             entityType = null,
             entityId = null,
             scopes = emptyList()
@@ -190,7 +179,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-minimal"
-        result.userRole shouldBe UserRole.entity_readonly
+        result.userRole shouldBe UserRole.of("entity_readonly")
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
@@ -217,7 +206,7 @@ class DualJwtValidatorTest {
         val token = JWT.create()
             .withSubject("test-user")
             .withIssuer("https://unknown-issuer.com")
-            .withClaim("role", UserRole.entity_user.name)
+            .withClaim("role", "entity_user")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
@@ -233,7 +222,7 @@ class DualJwtValidatorTest {
         // Given
         val token = JWT.create()
             .withIssuer("$baseApiUrl$supabaseAuthPath")
-            .withClaim("role", UserRole.entity_user.name)
+            .withClaim("role", "entity_user")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
@@ -265,7 +254,7 @@ class DualJwtValidatorTest {
         // Given
         val token = JWT.create()
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_user.name)
+            .withClaim("role", "entity_user")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
@@ -282,7 +271,7 @@ class DualJwtValidatorTest {
         val expiredToken = JWT.create()
             .withSubject("test-user")
             .withIssuer("$baseApiUrl$supabaseAuthPath")
-            .withClaim("role", UserRole.entity_user.name)
+            .withClaim("role", "entity_user")
             .withExpiresAt(Date.from(Instant.now().minusSeconds(3600))) // Expired 1 hour ago
             .sign(algorithm)
 
@@ -300,8 +289,8 @@ class DualJwtValidatorTest {
         // Given
         val token = createSupabaseToken(
             subject = "user123",
-            role = UserRole.entity_user,
-            entityType = EntityType.merchant,
+            role = "entity_user",
+            entityType = "merchant",
             entityId = "merchant-123"
         )
 
@@ -309,7 +298,7 @@ class DualJwtValidatorTest {
         val entityType = dualJwtValidator.getEntityType(token)
 
         // Then
-        entityType shouldBe EntityType.merchant
+        entityType shouldBe "merchant"
     }
 
     @Test
@@ -317,8 +306,8 @@ class DualJwtValidatorTest {
         // Given
         val token = createSupabaseToken(
             subject = "user123",
-            role = UserRole.entity_user,
-            entityType = EntityType.partner,
+            role = "entity_user",
+            entityType = "partner",
             entityId = "partner-456"
         )
 
@@ -334,7 +323,7 @@ class DualJwtValidatorTest {
         // Given
         val token = createPlatformToken(
             subject = "client-123",
-            role = UserRole.platform_admin,
+            role = "platform_admin",
             entityType = null,
             entityId = null,
             scopes = emptyList()
@@ -361,19 +350,19 @@ class DualJwtValidatorTest {
 
     private fun createSupabaseToken(
         subject: String,
-        role: UserRole,
-        entityType: EntityType?,
+        role: String,
+        entityType: String?,
         entityId: String?
     ): String {
         val tokenBuilder = JWT.create()
             .withSubject(subject)
             .withIssuer("$baseApiUrl$supabaseAuthPath")
-            .withClaim("role", role.name)
+            .withClaim("role", role)
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()
-            entityType?.let { appMetadata["entity_type"] = it.name }
+            entityType?.let { appMetadata["entity_type"] = it }
             entityId?.let { appMetadata["entity_id"] = it }
             tokenBuilder.withClaim("app_metadata", appMetadata)
         }
@@ -385,28 +374,28 @@ class DualJwtValidatorTest {
         return JWT.create()
             .withSubject("service-role-user")
             .withIssuer("$baseApiUrl$supabaseAuthPath")
-            .withClaim("role", UserRole.service_role.name)
+            .withClaim("role", "service_role")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
     }
 
     private fun createPlatformToken(
         subject: String,
-        role: UserRole,
-        entityType: EntityType?,
+        role: String,
+        entityType: String?,
         entityId: String?,
         scopes: List<String>
     ): String {
         val tokenBuilder = JWT.create()
             .withSubject(subject)
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", role.name)
+            .withClaim("role", role)
             .withClaim("scopes", scopes)
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()
-            entityType?.let { appMetadata["entity_type"] = it.name }
+            entityType?.let { appMetadata["entity_type"] = it }
             entityId?.let { appMetadata["entity_id"] = it }
             tokenBuilder.withClaim("app_metadata", appMetadata)
         }
@@ -435,12 +424,13 @@ class DualJwtValidatorTest {
             hmacFallbackEnabled = false
         )
 
-        // RS256-signed platform token
+        // RS256-signed platform token with partner context
         val token = JWT.create()
             .withSubject("client-rs256")
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
+            .withClaim("app_metadata", mapOf("entity_type" to "partner", "entity_id" to "partner-rs256"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(Algorithm.RSA256(null, privateKey))
 
@@ -450,7 +440,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.subject shouldBe "client-rs256"
-        result.userRole shouldBe UserRole.entity_admin
+        result.userRole shouldBe UserRole.of("entity_admin")
         result.clientId shouldBe "client-rs256"
     }
 
@@ -470,15 +460,16 @@ class DualJwtValidatorTest {
         val token = JWT.create()
             .withSubject("client-hs256")
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
+            .withClaim("app_metadata", mapOf("entity_type" to "partner", "entity_id" to "partner-hs256"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
 
         val result = validator.validateToken(token)
         result.isValid shouldBe true
         result.subject shouldBe "client-hs256"
-        result.userRole shouldBe UserRole.entity_admin
+        result.userRole shouldBe UserRole.of("entity_admin")
         result.clientId shouldBe "client-hs256"
     }
 
@@ -498,7 +489,7 @@ class DualJwtValidatorTest {
         val token = JWT.create()
             .withSubject("client-hs256-no-fallback")
             .withIssuer("$baseApiUrl$platformOauthPath")
-            .withClaim("role", UserRole.entity_admin.name)
+            .withClaim("role", "entity_admin")
             .withClaim("scopes", listOf("payment:read"))
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)

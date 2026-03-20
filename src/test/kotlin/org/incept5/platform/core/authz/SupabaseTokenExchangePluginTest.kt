@@ -1,4 +1,5 @@
 package org.incept5.platform.core.authz
+import org.incept5.platform.core.model.UserRole
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
@@ -8,8 +9,6 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import org.incept5.platform.core.model.EntityType
-import org.incept5.platform.core.model.UserRole
 import org.incept5.platform.core.security.DualJwtValidator
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -46,7 +45,7 @@ class SupabaseTokenExchangePluginTest {
     @Test
     fun `platform_admin maps to backoffice admin with no entity roles`() {
         val subject = UUID.randomUUID().toString()
-        val token = createSupabaseToken(subject, UserRole.platform_admin)
+        val token = createSupabaseToken(subject, "platform_admin")
 
         val result = plugin.exchangeToken(token)
 
@@ -56,18 +55,18 @@ class SupabaseTokenExchangePluginTest {
         result.getEntityRoles().shouldBeEmpty()
     }
 
-    // AC5: Service role maps to backoffice.admin
+    // AC5: Service role maps to service.admin
     @Test
-    fun `service_role maps to backoffice admin with no entity roles`() {
+    fun `service_role maps to service admin with no entity roles`() {
         val token = createSupabaseToken(
             subject = UUID.randomUUID().toString(),
-            role = UserRole.service_role
+            role = "service_role"
         )
 
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("backoffice.admin")
+        result.getGlobalRoles().shouldContainExactly("service.admin")
         result.getEntityRoles().shouldBeEmpty()
     }
 
@@ -78,8 +77,8 @@ class SupabaseTokenExchangePluginTest {
         val partnerId = "P1"
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_admin,
-            entityType = EntityType.partner,
+            role = "entity_admin",
+            entityType = "partner",
             entityId = partnerId
         )
 
@@ -103,8 +102,8 @@ class SupabaseTokenExchangePluginTest {
         val merchantId = "M1"
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_admin,
-            entityType = EntityType.merchant,
+            role = "entity_admin",
+            entityType = "merchant",
             entityId = merchantId
         )
 
@@ -127,8 +126,8 @@ class SupabaseTokenExchangePluginTest {
         val partnerId = "P1"
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_user,
-            entityType = EntityType.partner,
+            role = "entity_user",
+            entityType = "partner",
             entityId = partnerId
         )
 
@@ -151,8 +150,8 @@ class SupabaseTokenExchangePluginTest {
         val merchantId = "M1"
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_user,
-            entityType = EntityType.merchant,
+            role = "entity_user",
+            entityType = "merchant",
             entityId = merchantId
         )
 
@@ -175,8 +174,8 @@ class SupabaseTokenExchangePluginTest {
         val partnerId = "P1"
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_readonly,
-            entityType = EntityType.partner,
+            role = "entity_readonly",
+            entityType = "partner",
             entityId = partnerId
         )
 
@@ -198,8 +197,8 @@ class SupabaseTokenExchangePluginTest {
         val merchantId = "M1"
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_readonly,
-            entityType = EntityType.merchant,
+            role = "entity_readonly",
+            entityType = "merchant",
             entityId = merchantId
         )
 
@@ -227,7 +226,7 @@ class SupabaseTokenExchangePluginTest {
     fun `expired token returns null`() {
         val token = JWT.create()
             .withSubject(UUID.randomUUID().toString())
-            .withClaim("role", UserRole.platform_admin.name)
+            .withClaim("role", "platform_admin")
             .withIssuer("$baseApiUrl$supabaseAuthPath")
             .withExpiresAt(Instant.now().minusSeconds(3600))
             .sign(algorithm)
@@ -243,7 +242,7 @@ class SupabaseTokenExchangePluginTest {
         val subject = UUID.randomUUID().toString()
         val token = createSupabaseToken(
             subject = subject,
-            role = UserRole.entity_admin
+            role = "entity_admin"
         )
 
         val result = plugin.exchangeToken(token)
@@ -260,8 +259,8 @@ class SupabaseTokenExchangePluginTest {
         val partnerId = "P1"
         val token = createPlatformToken(
             subject = subject,
-            role = UserRole.entity_admin,
-            entityType = EntityType.partner,
+            role = "entity_admin",
+            entityType = "partner",
             entityId = partnerId
         )
 
@@ -278,48 +277,52 @@ class SupabaseTokenExchangePluginTest {
         }
     }
 
-    // --- Role mapping unit tests (using internal method) ---
+    // --- Role mapping unit tests (via plugin.mapRole) ---
 
     @Test
-    fun `mapRole covers all UserRole and EntityType combinations`() {
+    fun `mapRole covers all legacy role and entity type combinations`() {
         // Platform-level roles
-        plugin.mapRole(UserRole.platform_admin, null) shouldBe "backoffice.admin"
-        plugin.mapRole(UserRole.service_role, null) shouldBe "backoffice.admin"
+        plugin.mapRole("platform_admin", null) shouldBe "backoffice.admin"
+        plugin.mapRole("service_role", null) shouldBe "service.admin"
 
         // Partner entity roles
-        plugin.mapRole(UserRole.entity_admin, EntityType.partner) shouldBe "partner.admin"
-        plugin.mapRole(UserRole.entity_user, EntityType.partner) shouldBe "partner.user"
-        plugin.mapRole(UserRole.entity_readonly, EntityType.partner) shouldBe "partner.user"
+        plugin.mapRole("entity_admin", "partner") shouldBe "partner.admin"
+        plugin.mapRole("entity_user", "partner") shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", "partner") shouldBe "partner.user"
 
         // Merchant entity roles
-        plugin.mapRole(UserRole.entity_admin, EntityType.merchant) shouldBe "merchant.admin"
-        plugin.mapRole(UserRole.entity_user, EntityType.merchant) shouldBe "merchant.user"
-        plugin.mapRole(UserRole.entity_readonly, EntityType.merchant) shouldBe "merchant.user"
+        plugin.mapRole("entity_admin", "merchant") shouldBe "merchant.admin"
+        plugin.mapRole("entity_user", "merchant") shouldBe "merchant.user"
+        plugin.mapRole("entity_readonly", "merchant") shouldBe "merchant.user"
 
         // Fallback for null entity type on entity roles
-        plugin.mapRole(UserRole.entity_admin, null) shouldBe "partner.user"
-        plugin.mapRole(UserRole.entity_user, null) shouldBe "partner.user"
-        plugin.mapRole(UserRole.entity_readonly, null) shouldBe "partner.user"
+        plugin.mapRole("entity_admin", null) shouldBe "partner.user"
+        plugin.mapRole("entity_user", null) shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", null) shouldBe "partner.user"
+
+        // New role names pass through
+        plugin.mapRole("backoffice.admin", null) shouldBe "backoffice.admin"
+        plugin.mapRole("partner.admin", null) shouldBe "partner.admin"
     }
 
     // --- Helper methods ---
 
     private fun createSupabaseToken(
         subject: String,
-        role: UserRole,
-        entityType: EntityType? = null,
+        role: String,
+        entityType: String? = null,
         entityId: String? = null
     ): String {
         val builder = JWT.create()
             .withSubject(subject)
-            .withClaim("role", role.name)
+            .withClaim("role", role)
             .withIssuer("$baseApiUrl$supabaseAuthPath")
             .withIssuedAt(Instant.now())
             .withExpiresAt(Instant.now().plusSeconds(3600))
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()
-            entityType?.let { appMetadata["entity_type"] = it.name }
+            entityType?.let { appMetadata["entity_type"] = it }
             entityId?.let { appMetadata["entity_id"] = it }
             builder.withClaim("app_metadata", appMetadata)
         }
@@ -329,14 +332,14 @@ class SupabaseTokenExchangePluginTest {
 
     private fun createPlatformToken(
         subject: String,
-        role: UserRole,
-        entityType: EntityType? = null,
+        role: String,
+        entityType: String? = null,
         entityId: String? = null,
         scopes: List<String> = emptyList()
     ): String {
         val builder = JWT.create()
             .withSubject(subject)
-            .withClaim("role", role.name)
+            .withClaim("role", role)
             .withIssuer("$baseApiUrl$platformOauthPath")
             .withIssuedAt(Instant.now())
             .withExpiresAt(Instant.now().plusSeconds(3600))
@@ -347,7 +350,7 @@ class SupabaseTokenExchangePluginTest {
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()
-            entityType?.let { appMetadata["entity_type"] = it.name }
+            entityType?.let { appMetadata["entity_type"] = it }
             entityId?.let { appMetadata["entity_id"] = it }
             builder.withClaim("app_metadata", appMetadata)
         }

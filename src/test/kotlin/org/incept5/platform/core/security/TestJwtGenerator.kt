@@ -4,7 +4,6 @@ package org.incept5.platform.core.security
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
-import org.incept5.platform.core.model.EntityType
 
 /**
  * Test-specific JWT generator that extends the base JwtGenerator with CDI integration
