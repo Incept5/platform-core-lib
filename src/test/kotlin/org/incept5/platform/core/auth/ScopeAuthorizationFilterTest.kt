@@ -136,7 +136,7 @@ class ScopeAuthorizationFilterTest {
     private fun createUserToken(): String {
         return JWT.create()
             .withSubject(UUID.randomUUID().toString())
-            .withClaim("role", "entity_user")
+            .withClaim("role", "backoffice.admin")
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)
     }
@@ -144,7 +144,7 @@ class ScopeAuthorizationFilterTest {
     private fun createApiKeyToken(clientId: String, scopes: List<String>): String {
         return JWT.create()
             .withSubject(clientId)
-            .withClaim("role", "entity_admin")
+            .withClaim("role", "partner.admin")
             .withClaim("clientId", clientId)
             .withClaim("scopes", scopes)
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))

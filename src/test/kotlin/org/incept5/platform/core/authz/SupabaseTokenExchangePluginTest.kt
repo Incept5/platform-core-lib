@@ -9,6 +9,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.incept5.platform.core.security.DualJwtValidator
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -39,6 +40,31 @@ class SupabaseTokenExchangePluginTest {
             jwksUrl = Optional.empty()
         )
         plugin = SupabaseTokenExchangePlugin(dualJwtValidator)
+    }
+
+    @Test
+    fun `exchangeToken returns ApiPrincipal with all token fields`() {
+        val subject = UUID.randomUUID().toString()
+        val partnerId = "P1"
+        val token = createPlatformToken(
+            subject = subject,
+            role = "entity_admin",
+            entityType = "partner",
+            entityId = partnerId,
+            scopes = listOf("read", "write")
+        )
+
+        val result = plugin.exchangeToken(token)
+
+        result.shouldNotBeNull()
+        result.shouldBeInstanceOf<ApiPrincipal>()
+        val apiPrincipal = result as ApiPrincipal
+        apiPrincipal.subject shouldBe subject
+        apiPrincipal.userRole.value shouldBe "entity_admin"
+        apiPrincipal.entityType shouldBe "partner"
+        apiPrincipal.entityId shouldBe partnerId
+        apiPrincipal.scopes.shouldContainExactly("read", "write")
+        apiPrincipal.name shouldBe subject
     }
 
     // AC4: Platform admin maps to backoffice.admin

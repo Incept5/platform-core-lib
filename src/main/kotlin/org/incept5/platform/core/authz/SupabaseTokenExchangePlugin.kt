@@ -1,7 +1,6 @@
 package org.incept5.platform.core.authz
 
 import jakarta.inject.Singleton
-import org.incept5.authz.core.context.DefaultPrincipalContext
 import org.incept5.authz.core.context.PrincipalContext
 import org.incept5.authz.core.model.EntityRole
 import org.incept5.authz.core.service.TokenExchangePlugin
@@ -47,7 +46,13 @@ class SupabaseTokenExchangePlugin(
 
         log.debug("Token exchanged: subject=${result.subject}, globalRole=$globalRole, entityRoles=$entityRoles")
 
-        return DefaultPrincipalContext(
+        return ApiPrincipal(
+            subject = result.subject,
+            userRole = result.userRole,
+            entityType = result.entityType,
+            entityId = result.entityId,
+            scopes = result.scopes,
+            clientId = result.clientId,
             principalId = principalId,
             globalRoles = listOf(globalRole),
             entityRoles = entityRoles
