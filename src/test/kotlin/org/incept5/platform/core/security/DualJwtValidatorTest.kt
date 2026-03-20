@@ -1,5 +1,6 @@
 
 package org.incept5.platform.core.security
+import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 
 import com.auth0.jwt.JWT
@@ -55,7 +56,7 @@ class DualJwtValidatorTest {
         result.isValid shouldBe true
         result.subject shouldBe "user123"
         result.userRole shouldBe UserRole.of("entity_user")
-        result.entityType shouldBe "partner"
+        result.entityType shouldBe EntityType.PARTNER
         result.entityId shouldBe "partner-123"
         result.scopes shouldBe emptyList()
         result.clientId shouldBe null
@@ -93,7 +94,7 @@ class DualJwtValidatorTest {
         // Then
         result.isValid shouldBe true
         result.userRole shouldBe UserRole.of("entity_admin")
-        result.entityType shouldBe "merchant"
+        result.entityType shouldBe EntityType.MERCHANT
         result.scopes shouldBe emptyList()
     }
 
@@ -146,7 +147,7 @@ class DualJwtValidatorTest {
         result.isValid shouldBe true
         result.subject shouldBe "client-123"
         result.userRole shouldBe UserRole.of("entity_admin")
-        result.entityType shouldBe "partner"
+        result.entityType shouldBe EntityType.PARTNER
         result.entityId shouldBe "partner-789"
         result.scopes shouldBe listOf("payment:read", "partner:manage")
         result.clientId shouldBe "client-123"
@@ -298,7 +299,7 @@ class DualJwtValidatorTest {
         val entityType = dualJwtValidator.getEntityType(token)
 
         // Then
-        entityType shouldBe "merchant"
+        entityType shouldBe EntityType.MERCHANT
     }
 
     @Test

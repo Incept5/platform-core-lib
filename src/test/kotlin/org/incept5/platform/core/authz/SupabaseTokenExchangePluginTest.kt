@@ -1,4 +1,5 @@
 package org.incept5.platform.core.authz
+import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 
 import com.auth0.jwt.JWT
@@ -61,7 +62,7 @@ class SupabaseTokenExchangePluginTest {
         val apiPrincipal = result as ApiPrincipal
         apiPrincipal.subject shouldBe subject
         apiPrincipal.userRole.value shouldBe "entity_admin"
-        apiPrincipal.entityType shouldBe "partner"
+        apiPrincipal.entityType shouldBe EntityType.PARTNER
         apiPrincipal.entityId shouldBe partnerId
         apiPrincipal.scopes.shouldContainExactly("read", "write")
         apiPrincipal.name shouldBe subject
@@ -312,14 +313,14 @@ class SupabaseTokenExchangePluginTest {
         plugin.mapRole("service_role", null) shouldBe "service.admin"
 
         // Partner entity roles
-        plugin.mapRole("entity_admin", "partner") shouldBe "partner.admin"
-        plugin.mapRole("entity_user", "partner") shouldBe "partner.user"
-        plugin.mapRole("entity_readonly", "partner") shouldBe "partner.user"
+        plugin.mapRole("entity_admin", EntityType.PARTNER) shouldBe "partner.admin"
+        plugin.mapRole("entity_user", EntityType.PARTNER) shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", EntityType.PARTNER) shouldBe "partner.user"
 
         // Merchant entity roles
-        plugin.mapRole("entity_admin", "merchant") shouldBe "merchant.admin"
-        plugin.mapRole("entity_user", "merchant") shouldBe "merchant.user"
-        plugin.mapRole("entity_readonly", "merchant") shouldBe "merchant.user"
+        plugin.mapRole("entity_admin", EntityType.MERCHANT) shouldBe "merchant.admin"
+        plugin.mapRole("entity_user", EntityType.MERCHANT) shouldBe "merchant.user"
+        plugin.mapRole("entity_readonly", EntityType.MERCHANT) shouldBe "merchant.user"
 
         // Fallback for null entity type on entity roles
         plugin.mapRole("entity_admin", null) shouldBe "partner.user"
@@ -353,29 +354,29 @@ class SupabaseTokenExchangePluginTest {
         // An entity_admin for a partner becomes partner.admin
         // which extends partner.user and adds partner:update, merchant:create/update/delete,
         // user:create/read/update/delete, apikey:all, webhook:all, gateway:all, etc.
-        plugin.mapRole("entity_admin", "partner") shouldBe "partner.admin"
+        plugin.mapRole("entity_admin", EntityType.PARTNER) shouldBe "partner.admin"
 
         // An entity_user for a partner becomes partner.user
         // which has read-only style permissions: partner:read, merchant:read, payment:read/create, etc.
-        plugin.mapRole("entity_user", "partner") shouldBe "partner.user"
+        plugin.mapRole("entity_user", EntityType.PARTNER) shouldBe "partner.user"
 
         // An entity_admin for a merchant becomes merchant.admin
         // which extends merchant.user and adds merchant:update, user:create/read/update/delete,
         // webhook:all, apikey:all, etc.
-        plugin.mapRole("entity_admin", "merchant") shouldBe "merchant.admin"
+        plugin.mapRole("entity_admin", EntityType.MERCHANT) shouldBe "merchant.admin"
 
         // An entity_user for a merchant becomes merchant.user
         // which has: merchant:read, payment:read/create, settlement:read, payout:read, etc.
-        plugin.mapRole("entity_user", "merchant") shouldBe "merchant.user"
+        plugin.mapRole("entity_user", EntityType.MERCHANT) shouldBe "merchant.user"
 
         // entity_readonly maps to the base user role (readonly is handled via permissions, not role names)
-        plugin.mapRole("entity_readonly", "partner") shouldBe "partner.user"
-        plugin.mapRole("entity_readonly", "merchant") shouldBe "merchant.user"
+        plugin.mapRole("entity_readonly", EntityType.PARTNER) shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", EntityType.MERCHANT) shouldBe "merchant.user"
 
         // New-style role names (already matching authz-lib config) pass through unchanged
         plugin.mapRole("backoffice.admin", null) shouldBe "backoffice.admin"
-        plugin.mapRole("partner.admin", "partner") shouldBe "partner.admin"
-        plugin.mapRole("merchant.user", "merchant") shouldBe "merchant.user"
+        plugin.mapRole("partner.admin", EntityType.PARTNER) shouldBe "partner.admin"
+        plugin.mapRole("merchant.user", EntityType.MERCHANT) shouldBe "merchant.user"
     }
 
     @Test

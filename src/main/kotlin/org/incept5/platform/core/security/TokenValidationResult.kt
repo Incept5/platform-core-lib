@@ -1,13 +1,14 @@
 
 package org.incept5.platform.core.security
 
+import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 
 data class TokenValidationResult(
     val isValid: Boolean,
     val subject: String,
     val userRole: UserRole,
-    val entityType: String? = null,
+    val entityType: EntityType? = null,
     val entityId: String? = null,
     val scopes: List<String> = emptyList(),
     val clientId: String? = null,
@@ -17,7 +18,7 @@ data class TokenValidationResult(
         fun valid(
             subject: String,
             userRole: UserRole,
-            entityType: String?,
+            entityType: EntityType?,
             entityId: String?,
             scopes: List<String> = emptyList(),
             clientId: String? = null,

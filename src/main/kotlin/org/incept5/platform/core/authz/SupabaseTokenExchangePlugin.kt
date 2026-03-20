@@ -4,6 +4,7 @@ import jakarta.inject.Singleton
 import org.incept5.authz.core.context.PrincipalContext
 import org.incept5.authz.core.model.EntityRole
 import org.incept5.authz.core.service.TokenExchangePlugin
+import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.security.DualJwtValidator
 import org.incept5.platform.core.security.TokenValidationResult
 import org.jboss.logging.Logger
@@ -63,23 +64,23 @@ class SupabaseTokenExchangePlugin(
      * Maps JWT role strings to authz-lib role names.
      * Handles both legacy (platform_admin, entity_admin, etc.) and new role names (pass-through).
      */
-    internal fun mapRole(role: String, entityType: String?): String = when (role) {
+    internal fun mapRole(role: String, entityType: EntityType?): String = when (role) {
         "platform_admin" -> "backoffice.admin"
         "service_role" -> "service.admin"
         "entity_admin" -> when (entityType) {
-            "partner" -> "partner.admin"
-            "merchant" -> "merchant.admin"
-            else -> "partner.user"
+            EntityType.PARTNER -> "partner.admin"
+            EntityType.MERCHANT -> "merchant.admin"
+            null -> "partner.user"
         }
         "entity_user" -> when (entityType) {
-            "partner" -> "partner.user"
-            "merchant" -> "merchant.user"
-            else -> "partner.user"
+            EntityType.PARTNER -> "partner.user"
+            EntityType.MERCHANT -> "merchant.user"
+            null -> "partner.user"
         }
         "entity_readonly" -> when (entityType) {
-            "partner" -> "partner.user"
-            "merchant" -> "merchant.user"
-            else -> "partner.user"
+            EntityType.PARTNER -> "partner.user"
+            EntityType.MERCHANT -> "merchant.user"
+            null -> "partner.user"
         }
         // New role names pass through unchanged
         else -> role
@@ -94,7 +95,7 @@ class SupabaseTokenExchangePlugin(
 
         return listOf(
             EntityRole(
-                type = result.entityType!!.lowercase(),
+                type = result.entityType!!.value,
                 roles = listOf(mappedRole),
                 ids = listOf(result.entityId!!)
             )

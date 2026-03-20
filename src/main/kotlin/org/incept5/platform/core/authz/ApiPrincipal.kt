@@ -2,6 +2,7 @@ package org.incept5.platform.core.authz
 
 import org.incept5.authz.core.context.PrincipalContext
 import org.incept5.authz.core.model.EntityRole
+import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 import java.util.UUID
 
@@ -15,7 +16,7 @@ import java.util.UUID
 data class ApiPrincipal(
     val subject: String,
     val userRole: UserRole,
-    val entityType: String?,
+    val entityType: EntityType?,
     val entityId: String?,
     val scopes: List<String>,
     val clientId: String?,

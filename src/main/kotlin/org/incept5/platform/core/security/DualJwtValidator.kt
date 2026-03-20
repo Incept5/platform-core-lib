@@ -9,6 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.incept5.platform.core.error.ApiException
+import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 import java.util.Base64
 import org.incept5.error.ErrorCategory
@@ -149,7 +150,8 @@ class DualJwtValidator @Inject constructor(
                 ?: throw JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
-            val entityType = appMetadata?.get("entity_type")?.toString()
+            val entityTypeStr = appMetadata?.get("entity_type")?.toString()
+            val entityType = entityTypeStr?.let { EntityType.fromValue(it) }
             val entityId = appMetadata?.get("entity_id")?.toString()
 
             // Pass raw role string through — legacy mapping handled by SupabaseTokenExchangePlugin
@@ -187,7 +189,8 @@ class DualJwtValidator @Inject constructor(
                 ?: throw JWTVerificationException("Invalid role")
 
             val appMetadata = jwt.getClaim("app_metadata")?.asMap()
-            val entityType = appMetadata?.get("entity_type")?.toString()
+            val entityTypeStr = appMetadata?.get("entity_type")?.toString()
+            val entityType = entityTypeStr?.let { EntityType.fromValue(it) }
             val entityId = appMetadata?.get("entity_id")?.toString()
 
             // Pass raw role string through
@@ -215,7 +218,7 @@ class DualJwtValidator @Inject constructor(
     }
 
 
-    fun getEntityType(token: String): String? = validateToken(token).entityType
+    fun getEntityType(token: String): EntityType? = validateToken(token).entityType
     fun getEntityId(token: String): String? = validateToken(token).entityId
 
     /**

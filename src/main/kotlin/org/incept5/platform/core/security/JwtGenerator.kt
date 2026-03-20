@@ -3,6 +3,7 @@ package org.incept5.platform.core.security
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import org.incept5.platform.core.model.EntityType
 import java.time.Instant
 import java.util.*
 
@@ -48,7 +49,7 @@ open class JwtGenerator(
             .withClaim("email", "${user.userId}@test.com")
 
         // Create app_metadata map
-        val appMetadata = createAppMetadata(user.entityId, user.entityType)
+        val appMetadata = createAppMetadata(user.entityId, user.entityType?.value)
 
         // Add app_metadata to the token if it's not empty
         if (appMetadata.isNotEmpty()) {
