@@ -113,7 +113,7 @@ class SupabaseTokenExchangePluginTest {
 
         result.shouldNotBeNull()
         result.getPrincipalId() shouldBe UUID.fromString(subject)
-        result.getGlobalRoles().shouldContainExactly("partner.admin")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "partner"
@@ -137,7 +137,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("merchant.admin")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "merchant"
@@ -161,7 +161,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("partner.user")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "partner"
@@ -185,7 +185,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("merchant.user")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "merchant"
@@ -209,7 +209,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("partner.user")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "partner"
@@ -232,7 +232,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("merchant.user")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "merchant"
@@ -295,7 +295,7 @@ class SupabaseTokenExchangePluginTest {
 
         result.shouldNotBeNull()
         result.getPrincipalId() shouldBe UUID.fromString(subject)
-        result.getGlobalRoles().shouldContainExactly("partner.admin")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "partner"
@@ -393,10 +393,9 @@ class SupabaseTokenExchangePluginTest {
 
         val result = plugin.exchangeToken(token)
 
-        // The principal gets partner.admin as global role
-        // In authz-lib config, partner.admin extends partner.user and can assign partner.user and merchant.admin
+        // Entity roles are present but global roles should be empty (not a backoffice role)
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("partner.admin")
+        result.getGlobalRoles().shouldBeEmpty()
         result.getEntityRoles().shouldHaveSize(1)
         result.getEntityRoles()[0].let { entityRole ->
             entityRole.type shouldBe "partner"
@@ -416,7 +415,7 @@ class SupabaseTokenExchangePluginTest {
 
         // Both legacy and new-style tokens produce the same principal roles
         newStyleResult.shouldNotBeNull()
-        newStyleResult.getGlobalRoles().shouldContainExactly("partner.admin")
+        newStyleResult.getGlobalRoles().shouldBeEmpty()
         newStyleResult.getEntityRoles()[0].roles.shouldContainExactly("partner.admin")
     }
 

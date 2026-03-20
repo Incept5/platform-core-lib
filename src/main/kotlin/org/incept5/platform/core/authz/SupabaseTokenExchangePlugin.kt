@@ -42,10 +42,16 @@ class SupabaseTokenExchangePlugin(
             UUID.nameUUIDFromBytes(result.subject.toByteArray())
         }
 
-        val globalRole = mapRole(result.userRole.value, result.entityType)
-        val entityRoles = buildEntityRoles(result, globalRole)
+        val mappedRole = mapRole(result.userRole.value, result.entityType)
+        val globalRoles =
+            if (result.entityType == null && result.entityId == null) {
+                listOf(mapRole(mappedRole, result.entityType))
+            } else {
+                emptyList()
+            }
+        val entityRoles = buildEntityRoles(result, mappedRole)
 
-        log.debug("Token exchanged: subject=${result.subject}, globalRole=$globalRole, entityRoles=$entityRoles")
+        log.debug("Token exchanged: subject=${result.subject}, globalRole=$mappedRole, entityRoles=$entityRoles")
 
         return ApiPrincipal(
             subject = result.subject,
@@ -55,7 +61,7 @@ class SupabaseTokenExchangePlugin(
             scopes = result.scopes,
             clientId = result.clientId,
             principalId = principalId,
-            globalRoles = listOf(globalRole),
+            globalRoles = globalRoles,
             entityRoles = entityRoles
         )
     }
