@@ -14,7 +14,7 @@ java-jwt = "4.4.0"
 correlation = "1.0.20"
 error-lib = "1.0.26"
 cryptography-lib = "1.0.28"
-authz-lib = "1.0.21"
+authz-lib = "1.0.23"
 
 [libraries]
 # Core dependencies

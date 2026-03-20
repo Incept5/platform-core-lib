@@ -331,6 +331,94 @@ class SupabaseTokenExchangePluginTest {
         plugin.mapRole("partner.admin", null) shouldBe "partner.admin"
     }
 
+    /**
+     * Demonstrates how legacy JWT roles map to the authz-lib role names
+     * used in the fanfair services role configuration:
+     *
+     * backoffice.admin  -> ".*:all" (full access)
+     * partner.admin     -> extends partner.user + partner:update, merchant:create, user:all, apikey:all, etc.
+     * partner.user      -> partner:read, merchant:read, payment:read/create, settlement:read, etc.
+     * merchant.admin    -> extends merchant.user + merchant:update, user:all, webhook:all, apikey:all, etc.
+     * merchant.user     -> merchant:read, payment:read/create, settlement:read, etc.
+     *
+     * The role hierarchy means:
+     *   partner.admin has all partner.user permissions PLUS additional admin permissions
+     *   merchant.admin has all merchant.user permissions PLUS additional admin permissions
+     */
+    @Test
+    fun `legacy JWT roles map to fanfair authz-lib role hierarchy`() {
+        // A platform_admin JWT becomes backoffice.admin which has wildcard ".*:all" access
+        plugin.mapRole("platform_admin", null) shouldBe "backoffice.admin"
+
+        // An entity_admin for a partner becomes partner.admin
+        // which extends partner.user and adds partner:update, merchant:create/update/delete,
+        // user:create/read/update/delete, apikey:all, webhook:all, gateway:all, etc.
+        plugin.mapRole("entity_admin", "partner") shouldBe "partner.admin"
+
+        // An entity_user for a partner becomes partner.user
+        // which has read-only style permissions: partner:read, merchant:read, payment:read/create, etc.
+        plugin.mapRole("entity_user", "partner") shouldBe "partner.user"
+
+        // An entity_admin for a merchant becomes merchant.admin
+        // which extends merchant.user and adds merchant:update, user:create/read/update/delete,
+        // webhook:all, apikey:all, etc.
+        plugin.mapRole("entity_admin", "merchant") shouldBe "merchant.admin"
+
+        // An entity_user for a merchant becomes merchant.user
+        // which has: merchant:read, payment:read/create, settlement:read, payout:read, etc.
+        plugin.mapRole("entity_user", "merchant") shouldBe "merchant.user"
+
+        // entity_readonly maps to the base user role (readonly is handled via permissions, not role names)
+        plugin.mapRole("entity_readonly", "partner") shouldBe "partner.user"
+        plugin.mapRole("entity_readonly", "merchant") shouldBe "merchant.user"
+
+        // New-style role names (already matching authz-lib config) pass through unchanged
+        plugin.mapRole("backoffice.admin", null) shouldBe "backoffice.admin"
+        plugin.mapRole("partner.admin", "partner") shouldBe "partner.admin"
+        plugin.mapRole("merchant.user", "merchant") shouldBe "merchant.user"
+    }
+
+    @Test
+    fun `full token exchange produces roles matching fanfair config hierarchy`() {
+        // Simulate a partner admin user logging in with a legacy Supabase token
+        val subject = UUID.randomUUID().toString()
+        val partnerId = "PARTNER-123"
+        val token = createSupabaseToken(
+            subject = subject,
+            role = "entity_admin",
+            entityType = "partner",
+            entityId = partnerId
+        )
+
+        val result = plugin.exchangeToken(token)
+
+        // The principal gets partner.admin as global role
+        // In authz-lib config, partner.admin extends partner.user and can assign partner.user and merchant.admin
+        result.shouldNotBeNull()
+        result.getGlobalRoles().shouldContainExactly("partner.admin")
+        result.getEntityRoles().shouldHaveSize(1)
+        result.getEntityRoles()[0].let { entityRole ->
+            entityRole.type shouldBe "partner"
+            entityRole.roles.shouldContainExactly("partner.admin")
+            entityRole.ids.shouldContainExactly(partnerId)
+        }
+
+        // Now simulate the same user with the new-style role name (no legacy mapping needed)
+        val newStyleToken = createSupabaseToken(
+            subject = subject,
+            role = "partner.admin",
+            entityType = "partner",
+            entityId = partnerId
+        )
+
+        val newStyleResult = plugin.exchangeToken(newStyleToken)
+
+        // Both legacy and new-style tokens produce the same principal roles
+        newStyleResult.shouldNotBeNull()
+        newStyleResult.getGlobalRoles().shouldContainExactly("partner.admin")
+        newStyleResult.getEntityRoles()[0].roles.shouldContainExactly("partner.admin")
+    }
+
     // --- Helper methods ---
 
     private fun createSupabaseToken(
