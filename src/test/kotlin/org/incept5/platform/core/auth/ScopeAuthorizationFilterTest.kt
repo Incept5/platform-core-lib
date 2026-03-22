@@ -145,7 +145,7 @@ class ScopeAuthorizationFilterTest {
         return JWT.create()
             .withSubject(clientId)
             .withClaim("role", "partner.admin")
-            .withClaim("clientId", clientId)
+            .withClaim("client_id", clientId)
             .withClaim("scopes", scopes)
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
             .sign(algorithm)

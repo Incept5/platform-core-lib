@@ -55,7 +55,7 @@ class ScopeAuthorizationFilter : ContainerRequestFilter {
         }
 
         val subject = decodedJWT.subject ?: "unknown"
-        val clientId = decodedJWT.getClaim("clientId")?.asString()
+        val clientId = decodedJWT.getClaim("client_id")?.asString()
 
         // If scopeOnlyAuthorization is set, only API key tokens (with clientId) are allowed
         if (requireScope.scopeOnlyAuthorization && clientId.isNullOrEmpty()) {
