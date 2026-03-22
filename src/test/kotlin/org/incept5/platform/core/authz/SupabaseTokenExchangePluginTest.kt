@@ -84,7 +84,7 @@ class SupabaseTokenExchangePluginTest {
 
     // AC5: Service role maps to service.admin
     @Test
-    fun `service_role maps to service admin with no entity roles`() {
+    fun `service_role maps to service role with no entity roles`() {
         val token = createSupabaseToken(
             subject = UUID.randomUUID().toString(),
             role = "service_role"
@@ -93,7 +93,7 @@ class SupabaseTokenExchangePluginTest {
         val result = plugin.exchangeToken(token)
 
         result.shouldNotBeNull()
-        result.getGlobalRoles().shouldContainExactly("service.admin")
+        result.getGlobalRoles().shouldContainExactly("service.role")
         result.getEntityRoles().shouldBeEmpty()
     }
 
@@ -310,7 +310,7 @@ class SupabaseTokenExchangePluginTest {
     fun `mapRole covers all legacy role and entity type combinations`() {
         // Platform-level roles
         plugin.mapRole("platform_admin", null) shouldBe "backoffice.admin"
-        plugin.mapRole("service_role", null) shouldBe "service.admin"
+        plugin.mapRole("service_role", null) shouldBe "service.role"
 
         // Partner entity roles
         plugin.mapRole("entity_admin", EntityType.PARTNER) shouldBe "partner.admin"

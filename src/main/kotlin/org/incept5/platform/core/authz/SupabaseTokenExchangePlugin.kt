@@ -72,7 +72,7 @@ class SupabaseTokenExchangePlugin(
      */
     internal fun mapRole(role: String, entityType: EntityType?): String = when (role) {
         "platform_admin" -> "backoffice.admin"
-        "service_role" -> "service.admin"
+        "service_role" -> "service.role"
         "entity_admin" -> when (entityType) {
             EntityType.PARTNER -> "partner.admin"
             EntityType.MERCHANT -> "merchant.admin"

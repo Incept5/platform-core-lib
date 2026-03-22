@@ -58,7 +58,6 @@ class ScopeAuthorizationFilter : ContainerRequestFilter {
         val clientId = decodedJWT.getClaim("client_id")?.asString()
         // If scopeOnlyAuthorization is set, only API key tokens (with clientId) are allowed
         if (requireScope.scopeOnlyAuthorization && clientId.isNullOrEmpty()) {
-            log.warn("client_id was not set correctly: $clientId perhaps an old claim was used: clientId: ${decodedJWT.getClaim("clientId")?.asString()}")
             log.warn("Subject $subject tried to access endpoint which is only accessible with API Key issued tokens")
             throw ForbiddenException("Access denied: Endpoint only accessible with API Key issued tokens")
         }
