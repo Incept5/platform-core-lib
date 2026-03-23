@@ -266,6 +266,95 @@ class CreateUserAccessControl : BaseEntityAccessControl(
 )
 ```
 
+### Matching Path Parameters to the Principal's Entity ID
+
+A common pattern is ensuring that a path parameter like `{partnerId}` matches the calling principal's entity ID. For example, a partner user calling `/api/v1/partner/{partnerId}` should only access their own partner resource.
+
+**Option 1: BaseEntityAccessControl (recommended)**
+
+The simplest approach when the entity ID is the first path parameter:
+
+```kotlin
+class PartnerResourceAccessControl : BaseEntityAccessControl(
+    permission = Permission.of("partner:read"),
+    entityType = "partner",
+    extractEntityId = { ctx -> ctx.firstArg<String>() }
+)
+```
+
+**Option 2: Manual implementation (more control)**
+
+Use this when you need custom logic, e.g. checking multiple entity types:
+
+```kotlin
+class PartnerResourceAccessControl : AccessControl<Any?> {
+
+    private val permission = Permission.of("partner:read")
+
+    override fun before(ctx: DefaultAccessControlContext) {
+        ctx.authz().ensureOperationAllowedForPrincipal(permission)
+
+        // Backoffice can access any partner
+        if (ctx.authz().principalHasGlobalPermission(permission)) return
+
+        // Get {partnerId} from the path (first method argument)
+        val partnerId = ctx.firstArg<String>()
+
+        // Partner-scoped: check the partnerId matches principal's allowed IDs
+        if (ctx.authz().principalHasEntityRole("partner")) {
+            val allowedIds = ctx.authz().specificEntityIds(permission, "partner")
+            if (partnerId !in allowedIds) {
+                throw AuthzException(
+                    AuthzErrorCodes.PERMISSION_DENIED,
+                    "Access denied: principal cannot access partner $partnerId"
+                )
+            }
+            return
+        }
+
+        throw AuthzException(
+            AuthzErrorCodes.PERMISSION_DENIED,
+            "No entity scope for partner resource"
+        )
+    }
+
+    override fun after(result: Any?, ctx: DefaultAccessControlContext): Any? = result
+}
+```
+
+**Option 3: ensurePrincipalHasPermission (concise manual approach)**
+
+```kotlin
+class PartnerResourceAccessControl : AccessControl<Any?> {
+
+    private val permission = Permission.of("partner:read")
+
+    override fun before(ctx: DefaultAccessControlContext) {
+        val partnerId = ctx.firstArg<String>()
+        // Checks global OR entity-scoped access in one call
+        ctx.authz().ensurePrincipalHasPermission(permission, "partner", partnerId)
+    }
+
+    override fun after(result: Any?, ctx: DefaultAccessControlContext): Any? = result
+}
+```
+
+**Controller wiring:**
+
+```kotlin
+@Path("/api/v1/partner")
+@Authorized
+class PartnerController {
+
+    @GET
+    @Path("/{partnerId}")
+    @AuthzCheck(PartnerResourceAccessControl::class)
+    fun getPartner(@PathParam("partnerId") partnerId: String): PartnerResponse {
+        // ...
+    }
+}
+```
+
 ### Full Example: Entity ID Only in the Result
 
 When the entity ID is not in the request, enforce scoping in `after()`:
