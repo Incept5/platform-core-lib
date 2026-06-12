@@ -142,6 +142,28 @@ fun submitContact(form: ContactForm): Response {
 }
 ```
 
+When the limit is exceeded the interceptor throws `RateLimitExceededException`,
+which error-lib's `RestErrorHandler` maps to an HTTP 429 (Too Many Requests)
+response with a `Retry-After` header (in seconds) and the standard error body:
+
+```json
+{
+  "errors": [
+    {
+      "message": "Rate limit exceeded. Maximum 10 requests per minute allowed.",
+      "code": "RATE_LIMIT_EXCEEDED"
+    }
+  ],
+  "correlationId": "unique-correlation-id",
+  "httpStatusCode": 429
+}
+```
+
+No custom `ExceptionMapper` is needed in consuming services — services that
+registered their own mapper for `RateLimitExceededException` can delete it.
+The interceptor WARN-logs each rejection with the bucket key and limit;
+error-lib logs the 429 mapping at DEBUG to avoid double-logging.
+
 ## ULID Generation
 
 Inject `UlidService` for time-sortable unique ID generation:
