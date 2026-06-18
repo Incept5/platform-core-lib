@@ -2,6 +2,7 @@ package org.incept5.platform.core.ratelimit.config
 
 import io.smallrye.config.ConfigMapping
 import io.smallrye.config.WithDefault
+import java.time.Duration
 
 /**
  * Configuration properties for rate limiting feature.
@@ -26,9 +27,71 @@ interface RateLimitConfig {
     fun defaultRequestsPerMinute(): Int
 
     /**
+     * Per-key request-per-minute overrides, resolved by the `key` on the `@RateLimit`
+     * annotation. Lets limits be tuned via config without a code change/redeploy of the
+     * annotation value; the annotation's `requestsPerMinute` is used as the fallback when a
+     * key is not present here.
+     *
+     * Configure as e.g. `rate-limit.limits."payment-session-cancel"=10`
+     * (quote keys containing dashes/dots).
+     */
+    fun limits(): Map<String, Int>
+
+    /**
+     * Client-IP resolution strategy used to key rate-limit buckets.
+     */
+    fun clientIp(): ClientIpConfig
+
+    /**
+     * Bounds on the in-memory bucket store so unbounded key churn cannot exhaust memory.
+     */
+    fun bucket(): BucketConfig
+
+    /**
      * Payment session specific rate limiting configuration.
      */
     fun paymentSession(): PaymentSessionRateLimitConfig
+
+    /**
+     * Client-IP resolution configuration.
+     */
+    interface ClientIpConfig {
+
+        /**
+         * Strategy for deriving the client IP from the request.
+         * Default: TRUSTED_PROXY_HOPS (spoof-resistant; replaces the old leftmost-XFF default).
+         */
+        @WithDefault("TRUSTED_PROXY_HOPS")
+        fun strategy(): ClientIpStrategy
+
+        /**
+         * Number of trusted proxy hops in front of the application that append to
+         * `X-Forwarded-For`. The client IP is taken as the Nth-from-right XFF value.
+         * Default: 2 (ALB + Kong).
+         */
+        @WithDefault("2")
+        fun trustedProxyHops(): Int
+    }
+
+    /**
+     * Bucket store bounds (in-memory store only).
+     */
+    interface BucketConfig {
+
+        /**
+         * Maximum number of buckets retained in memory. When exceeded, least-recently-used
+         * buckets are evicted. Default: 100000.
+         */
+        @WithDefault("100000")
+        fun maxSize(): Long
+
+        /**
+         * Buckets untouched for this duration are evicted (ISO-8601 duration).
+         * Default: PT10M (10 minutes — comfortably longer than the 1-minute refill window).
+         */
+        @WithDefault("PT10M")
+        fun idleTtl(): Duration
+    }
 
     /**
      * Payment session rate limiting configuration.

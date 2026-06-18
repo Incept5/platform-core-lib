@@ -164,6 +164,66 @@ registered their own mapper for `RateLimitExceededException` can delete it.
 The interceptor WARN-logs each rejection with the bucket key and limit;
 error-lib logs the 429 mapping at DEBUG to avoid double-logging.
 
+### Client-IP resolution (spoof-resistant)
+
+Buckets are keyed on the client IP resolved by `ClientIpResolver`. The default strategy is
+**`TRUSTED_PROXY_HOPS`**: the client IP is taken as the Nth-from-right value of `X-Forwarded-For`,
+where N is the number of trusted proxies in front of the app. Because trusted proxies (ALB, Kong)
+append on the *right*, any spoofed values a caller prepends on the left are ignored — sending a
+random `X-Forwarded-For` per request no longer mints a fresh bucket.
+
+```properties
+# Default: 2 hops (ALB + Kong). Set to your real edge topology.
+rate-limit.client-ip.strategy=TRUSTED_PROXY_HOPS   # or X_REAL_IP, REMOTE_ADDR, LEFTMOST_XFF (legacy)
+rate-limit.client-ip.trusted-proxy-hops=2
+```
+
+`ClientIpResolver` is an injectable `@ApplicationScoped` bean — reuse it anywhere you throttle
+programmatically so every limiter buckets on the same identity:
+
+```kotlin
+class MyController(private val clientIpResolver: ClientIpResolver) {
+    fun handle(@Context request: HttpServerRequest) {
+        val ip = clientIpResolver.resolve(request)
+        // ...
+    }
+}
+```
+
+### Config-driven limits and per-request key dimension
+
+The annotation's `requestsPerMinute` is the fallback; a per-key config entry overrides it so limits
+are tunable without changing the annotation. `keyPathParam` appends a `@PathParam` value to the
+bucket key, giving each value its own bucket (e.g. per-session throttling):
+
+```kotlin
+@POST
+@Path("/{sessionId}/confirm")
+@RateLimit(requestsPerMinute = 10, key = "payment-session-confirm", keyPathParam = "sessionId")
+fun confirm(@PathParam("sessionId") sessionId: String): Response { /* ... */ }
+```
+
+```properties
+# Quote keys containing dashes/dots. Overrides the annotation's 10/min.
+rate-limit.limits."payment-session-confirm"=20
+```
+
+### Bounded store and metrics
+
+The in-memory bucket store is backed by a Caffeine cache that is bounded by size and idle TTL, so
+key churn cannot exhaust memory. The active bucket count is published as the `rate_limit.buckets`
+Micrometer gauge (when a `MeterRegistry` is present).
+
+```properties
+rate-limit.bucket.max-size=100000   # LRU eviction beyond this many buckets
+rate-limit.bucket.idle-ttl=PT10M    # evict buckets untouched for this long
+rate-limit.enabled=true             # global kill-switch
+```
+
+The default store is per-instance. A distributed (Redis-backed) `RateLimitStore` can be supplied as
+a `@DefaultBean` override to enforce limits cluster-wide (the interface seam exists; the Redis impl
+is deferred until Redis infrastructure is provisioned).
+
 ## ULID Generation
 
 Inject `UlidService` for time-sortable unique ID generation:

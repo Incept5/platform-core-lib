@@ -61,6 +61,9 @@ dependencies {
     api("io.quarkus:quarkus-arc:$quarkusVersion")
     api("io.quarkus:quarkus-hibernate-validator:$quarkusVersion")
     api("io.quarkus:quarkus-vertx:$quarkusVersion")
+    // Caffeine cache (via the Quarkus extension so the version stays BOM-aligned) — backs the
+    // bounded in-memory rate-limit bucket store.
+    api("io.quarkus:quarkus-caffeine:$quarkusVersion")
 
     // Additional libs using version catalog
     api(libs.ulid)
@@ -68,6 +71,9 @@ dependencies {
     api("com.bucket4j:bucket4j-core:8.7.0")
     api("at.favre.lib:bcrypt:0.10.2")
     api("commons-codec:commons-codec:1.16.0")
+    // Micrometer for the rate_limit.buckets gauge. compileOnly so it is not forced on consumers;
+    // the gauge registers only when a MeterRegistry is present on the consumer's classpath.
+    compileOnly("io.micrometer:micrometer-core:1.14.5")
 
     // Incept5 external dependencies
     api(libs.incept5.correlation)
@@ -103,6 +109,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testImplementation("org.assertj:assertj-core:3.24.2")
     testImplementation("ch.qos.logback:logback-classic:1.4.14")
+    testImplementation("io.micrometer:micrometer-core:1.14.5")
 }
 
 // All-open annotations for Quarkus
