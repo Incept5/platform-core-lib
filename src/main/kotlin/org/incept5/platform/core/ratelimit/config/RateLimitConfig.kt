@@ -48,6 +48,21 @@ interface RateLimitConfig {
     fun bucket(): BucketConfig
 
     /**
+     * Which backing store enforces the limits. `in-memory` (default) is per-instance;
+     * `redis` enforces limits cluster-wide across ECS tasks. Selecting `redis` requires
+     * `bucket4j-redis` + `lettuce-core` on the runtime classpath (they are optional/compileOnly
+     * in this library) and a reachable Redis (see [redis]).
+     * Default: in-memory.
+     */
+    @WithDefault("in-memory")
+    fun store(): String
+
+    /**
+     * Redis connection settings, used only when [store] is `redis`.
+     */
+    fun redis(): RedisConfig
+
+    /**
      * Payment session specific rate limiting configuration.
      */
     fun paymentSession(): PaymentSessionRateLimitConfig
@@ -91,6 +106,26 @@ interface RateLimitConfig {
          */
         @WithDefault("PT10M")
         fun idleTtl(): Duration
+    }
+
+    /**
+     * Redis store configuration (used only when `rate-limit.store=redis`).
+     */
+    interface RedisConfig {
+
+        /**
+         * Redis connection URI (Lettuce format), e.g. `redis://host:6379` or
+         * `rediss://host:6380` for TLS. Default: redis://localhost:6379.
+         */
+        @WithDefault("redis://localhost:6379")
+        fun uri(): String
+
+        /**
+         * Prefix applied to every bucket key in Redis, so rate-limit keys are namespaced
+         * and clearable independently of anything else in the database. Default: `rate-limit:`.
+         */
+        @WithDefault("rate-limit:")
+        fun keyPrefix(): String
     }
 
     /**

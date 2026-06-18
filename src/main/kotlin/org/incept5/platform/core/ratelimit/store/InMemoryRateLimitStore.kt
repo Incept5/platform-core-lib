@@ -4,10 +4,6 @@ import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
 import io.github.bucket4j.Bandwidth
 import io.github.bucket4j.Bucket
-import io.quarkus.arc.DefaultBean
-import jakarta.enterprise.context.ApplicationScoped
-import jakarta.inject.Inject
-import org.incept5.platform.core.ratelimit.config.RateLimitConfig
 import org.slf4j.LoggerFactory
 import java.time.Duration
 
@@ -20,28 +16,22 @@ import java.time.Duration
  * hardening, or any high-cardinality key dimension) cannot grow the map without bound and turn
  * the limiter itself into a memory-DoS vector (EPIC-46 STORY-03 AC3).
  *
- * Registered as a [DefaultBean] so a distributed implementation can replace it without changing
- * call sites.
+ * Instantiated by [RateLimitStoreProducer] (the default store); it is a plain class, not a CDI
+ * bean, so the producer owns selection between this and the distributed store.
  */
-@ApplicationScoped
-@DefaultBean
-class InMemoryRateLimitStore : RateLimitStore {
+class InMemoryRateLimitStore(
+    maxSize: Long = DEFAULT_MAX_SIZE,
+    idleTtl: Duration = DEFAULT_IDLE_TTL,
+) : RateLimitStore {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    private val cache: Cache<String, Bucket>
+    private val cache: Cache<String, Bucket> = Caffeine.newBuilder()
+        .maximumSize(maxSize)
+        .expireAfterAccess(idleTtl)
+        .build()
 
-    /** No-arg constructor for non-CDI use (unit tests) and CDI client-proxy creation. */
-    constructor() : this(DEFAULT_MAX_SIZE, DEFAULT_IDLE_TTL)
-
-    @Inject
-    constructor(config: RateLimitConfig) : this(config.bucket().maxSize(), config.bucket().idleTtl())
-
-    constructor(maxSize: Long, idleTtl: Duration) {
-        this.cache = Caffeine.newBuilder()
-            .maximumSize(maxSize)
-            .expireAfterAccess(idleTtl)
-            .build()
+    init {
         logger.info("Initialised in-memory rate-limit store: maxSize={}, idleTtl={}", maxSize, idleTtl)
     }
 

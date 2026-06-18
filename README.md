@@ -220,9 +220,28 @@ rate-limit.bucket.idle-ttl=PT10M    # evict buckets untouched for this long
 rate-limit.enabled=true             # global kill-switch
 ```
 
-The default store is per-instance. A distributed (Redis-backed) `RateLimitStore` can be supplied as
-a `@DefaultBean` override to enforce limits cluster-wide (the interface seam exists; the Redis impl
-is deferred until Redis infrastructure is provisioned).
+### Distributed enforcement (Redis)
+
+By default the store is per-instance, so with N tasks the effective limit is N× the configured
+value. Set `rate-limit.store=redis` to enforce limits cluster-wide via a shared Redis (Bucket4j +
+Lettuce). This is **opt-in**: `bucket4j-redis` and `lettuce-core` are `compileOnly` in this
+library, so consumers using the default in-memory store pay no dependency cost — consumers enabling
+Redis must add both to their own runtime classpath and provide a reachable Redis.
+
+```properties
+rate-limit.store=redis                          # default: in-memory
+rate-limit.redis.uri=redis://my-redis:6379      # rediss:// for TLS
+rate-limit.redis.key-prefix=rate-limit:         # namespaces + scopes clearing
+```
+
+```kotlin
+// consumer build.gradle.kts, only when rate-limit.store=redis
+implementation("com.bucket4j:bucket4j-redis:8.7.0")
+implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
+```
+
+Bucket keys expire from Redis after `rate-limit.bucket.idle-ttl`. The `rate_limit.buckets` gauge
+reports in-memory buckets only (0 for the Redis store, whose state lives in Redis).
 
 ## ULID Generation
 

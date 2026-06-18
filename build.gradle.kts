@@ -74,6 +74,11 @@ dependencies {
     // Micrometer for the rate_limit.buckets gauge. compileOnly so it is not forced on consumers;
     // the gauge registers only when a MeterRegistry is present on the consumer's classpath.
     compileOnly("io.micrometer:micrometer-core:1.14.5")
+    // Distributed (Redis) rate-limit store — opt-in via rate-limit.store=redis. compileOnly so
+    // consumers using the default in-memory store pay no dependency cost; consumers enabling Redis
+    // add bucket4j-redis + lettuce-core to their own runtime classpath.
+    compileOnly("com.bucket4j:bucket4j-redis:8.7.0")
+    compileOnly("io.lettuce:lettuce-core:6.3.2.RELEASE")
 
     // Incept5 external dependencies
     api(libs.incept5.correlation)
@@ -110,6 +115,10 @@ dependencies {
     testImplementation("org.assertj:assertj-core:3.24.2")
     testImplementation("ch.qos.logback:logback-classic:1.4.14")
     testImplementation("io.micrometer:micrometer-core:1.14.5")
+    // Redis store contract test (AC4): bucket4j-redis + lettuce against a Testcontainers Redis.
+    testImplementation("com.bucket4j:bucket4j-redis:8.7.0")
+    testImplementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
+    testImplementation("org.testcontainers:testcontainers:1.20.6")
 }
 
 // All-open annotations for Quarkus

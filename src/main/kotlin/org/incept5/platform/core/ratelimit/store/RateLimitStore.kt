@@ -1,10 +1,10 @@
 package org.incept5.platform.core.ratelimit.store
 
 /**
- * Backing store for rate-limit token buckets. The default implementation
- * ([InMemoryRateLimitStore]) is bounded and per-instance; a distributed (Redis-backed)
- * implementation can be provided as an alternative `@DefaultBean` override to enforce limits
- * cluster-wide (EPIC-46 STORY-03 AC4, deferred until Redis infra exists).
+ * Backing store for rate-limit token buckets. The implementation is chosen at runtime by
+ * [RateLimitStoreProducer] from the `rate-limit.store` flag: the default [InMemoryRateLimitStore]
+ * is bounded and per-instance; [RedisRateLimitStore] enforces limits cluster-wide (EPIC-46
+ * STORY-03 AC4) and is enabled by setting `rate-limit.store=redis`.
  */
 interface RateLimitStore {
 

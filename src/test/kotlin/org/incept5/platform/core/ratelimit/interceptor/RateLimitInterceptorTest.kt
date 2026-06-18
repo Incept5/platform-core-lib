@@ -126,6 +126,11 @@ class RateLimitInterceptorTest {
             override fun maxSize() = 100_000L
             override fun idleTtl(): Duration = Duration.ofMinutes(10)
         }
+        override fun store() = "in-memory"
+        override fun redis() = object : RateLimitConfig.RedisConfig {
+            override fun uri() = "redis://localhost:6379"
+            override fun keyPrefix() = "rate-limit:"
+        }
         override fun paymentSession() = object : RateLimitConfig.PaymentSessionRateLimitConfig {
             override fun cancellationRequestsPerMinute() = 10
             override fun includeHeaders() = true
