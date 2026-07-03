@@ -126,6 +126,23 @@ interface RateLimitConfig {
          */
         @WithDefault("rate-limit:")
         fun keyPrefix(): String
+
+        /**
+         * Hard upper bound on the initial Lettuce connect attempt (DNS + TCP). Bounds the
+         * lazy connect wrapped in [org.incept5.platform.core.ratelimit.store.RedisRateLimitStore]
+         * so a Redis endpoint whose DNS is stuck in an "unresolved" state cannot hang the caller
+         * for the full JVM DNS default (~60s). Milliseconds. Default: 1000ms.
+         */
+        @WithDefault("1000")
+        fun connectTimeoutMs(): Long
+
+        /**
+         * Per-command timeout applied to every Lettuce operation via `TimeoutOptions`. Bounds each
+         * `tryConsume`/`availableTokens` call so a healthy connection whose Redis has since become
+         * slow does not stall the request path. Milliseconds. Default: 500ms.
+         */
+        @WithDefault("500")
+        fun commandTimeoutMs(): Long
     }
 
     /**

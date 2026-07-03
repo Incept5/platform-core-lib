@@ -31,8 +31,14 @@ class RateLimitStoreProducer(
         val bucket = config.bucket()
         return if (config.store().equals(REDIS, ignoreCase = true)) {
             logger.info("Rate-limit store: redis (distributed, cluster-wide enforcement)")
-            RedisRateLimitStore(config.redis().uri(), config.redis().keyPrefix(), bucket.idleTtl())
-                .also { closeable = it }
+            val redis = config.redis()
+            RedisRateLimitStore(
+                redis.uri(),
+                redis.keyPrefix(),
+                bucket.idleTtl(),
+                redis.connectTimeoutMs(),
+                redis.commandTimeoutMs(),
+            ).also { closeable = it }
         } else {
             logger.info("Rate-limit store: in-memory (per-instance)")
             InMemoryRateLimitStore(bucket.maxSize(), bucket.idleTtl())
