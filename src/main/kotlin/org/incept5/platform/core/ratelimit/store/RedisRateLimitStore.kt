@@ -119,20 +119,23 @@ class RedisRateLimitStore @JvmOverloads constructor(
             try {
                 connection = future.get()
             } catch (e: ExecutionException) {
-                // Underlying Lettuce failure surfaces as ExecutionException; unwrap so callers see
-                // the same RedisConnectionException / RedisException they would have seen without
-                // the bounded wrapper.
-                throw e.cause ?: RedisConnectionException("connect failed", e)
-            } catch (e: TimeoutException) {
-                // orTimeout triggered — likely DNS-limbo (the OS resolver never answered). Cancel
-                // so we don't hold references to the leaked in-executor thread's future; the thread
-                // itself continues until the OS resolver eventually gives up (bounded, but outside
-                // our budget).
+                // JDK contract: Future.get() wraps every terminal exception from the underlying task
+                // — including the TimeoutException that orTimeout(...) completes the future with —
+                // as ExecutionException(cause=underlying). We must unwrap AND normalise a raw
+                // TimeoutException back to RedisConnectionException here, because the fail-open
+                // catches in tryConsume/availableTokens are catch (RedisException) — a raw
+                // TimeoutException would leak past them to the caller (500 instead of fail-open).
                 future.cancel(true)
-                throw RedisConnectionException(
-                    "connect timed out after ${connectTimeoutMs}ms (likely DNS resolution)",
-                    e,
-                )
+                val cause = e.cause
+                when (cause) {
+                    is TimeoutException -> throw RedisConnectionException(
+                        "connect timed out after ${connectTimeoutMs}ms (likely DNS resolution)",
+                        cause,
+                    )
+                    is RedisConnectionException -> throw cause
+                    is RedisException -> throw cause
+                    else -> throw cause ?: RedisConnectionException("connect failed", e)
+                }
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
                 throw RedisConnectionException("connect interrupted", e)
@@ -161,11 +164,13 @@ class RedisRateLimitStore @JvmOverloads constructor(
                 logger.debug("Rate limit exceeded for key: {}, limit: {}/min", key, requestsPerMinute)
             }
             allowed
-        } catch (e: RedisConnectionException) {
-            failOpen("tryConsume", key, e)
-            true
-        } catch (e: RedisException) {
-            // bucket4j-redis surfaces Redis command failures (incl. command-timeout) as RedisException.
+        } catch (e: Exception) {
+            // Broad catch (matches RedisChallengeMarkerStore.isPresent). Redis outage surfaces
+            // through several exception types depending on failure mode — RedisConnectionException
+            // (TCP refused / initial connect failed), RedisCommandTimeoutException (server slow),
+            // and TimeoutException (our bounded-connect budget expired via orTimeout, wrapped by
+            // connection()). Any of them means "our own Redis is unavailable" — fail open so a
+            // legitimate buyer request is never blocked by our own infra.
             failOpen("tryConsume", key, e)
             true
         }
@@ -174,10 +179,7 @@ class RedisRateLimitStore @JvmOverloads constructor(
     override fun availableTokens(key: String, requestsPerMinute: Int): Long {
         return try {
             bucket(key, requestsPerMinute).availableTokens
-        } catch (e: RedisConnectionException) {
-            failOpen("availableTokens", key, e)
-            Long.MAX_VALUE
-        } catch (e: RedisException) {
+        } catch (e: Exception) {
             failOpen("availableTokens", key, e)
             Long.MAX_VALUE
         }
@@ -198,10 +200,8 @@ class RedisRateLimitStore @JvmOverloads constructor(
             if (keys.isNotEmpty()) {
                 commands.del(*keys.toTypedArray())
             }
-        } catch (e: RedisConnectionException) {
+        } catch (e: Exception) {
             // Admin-facing clear on an outage → silent no-op is acceptable. Ops sees the metric.
-            failOpen("clear", key = null, e)
-        } catch (e: RedisException) {
             failOpen("clear", key = null, e)
         }
     }

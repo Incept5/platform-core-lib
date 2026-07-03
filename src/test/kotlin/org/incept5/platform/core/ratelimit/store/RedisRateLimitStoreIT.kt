@@ -94,20 +94,13 @@ class RedisRateLimitStoreIT {
     }
 
     /**
-     * FF-2948 — bounded-connect + fail-open. When Redis is unreachable, the store must NOT hang
-     * the caller (previously ~60s waiting on the OS resolver); it must throw its bounded
-     * `RedisConnectionException` inside `connectTimeoutMs`, be caught by the store, and return
-     * `true` from `tryConsume` (fail-open) so the request path is not blocked by our own infra
-     * outage.
-     *
-     * Uses `unavailable-testing.invalid` (RFC 6761 reserved TLD → NXDOMAIN in <10ms on any
-     * conformant resolver) as the stand-in for a DNS-limbo endpoint. The DNS-limbo variant
-     * (a real hostname that neither answers nor returns NXDOMAIN) is what actually causes the
-     * 60s hang in production; simulating that is not portable across CI runners, so this test
-     * covers the fast-DNS-failure path which the bounded wrapper handles identically.
+     * FF-2948 — fast-fail path: bounded-connect + fail-open when DNS resolves to NXDOMAIN
+     * quickly. `unavailable-testing.invalid` (RFC 6761 reserved TLD) returns NXDOMAIN in <10ms
+     * on any conformant resolver, so the Lettuce connect throws its native
+     * `RedisConnectionException` before our `orTimeout` window elapses. Store fails open cleanly.
      */
     @Test
-    fun `FF-2948 unreachable Redis fails open on tryConsume within the bounded budget`() {
+    fun `FF-2948 unreachable Redis (fast NXDOMAIN) fails open on tryConsume within the bounded budget`() {
         val budgetMs = 3000L
         assertTimeoutPreemptively(Duration.ofMillis(budgetMs)) {
             RedisRateLimitStore(
@@ -117,8 +110,38 @@ class RedisRateLimitStoreIT {
                 connectTimeoutMs = 1000L,
                 commandTimeoutMs = 500L,
             ).use { store ->
-                assertThat(store.tryConsume("client-outage", requestsPerMinute = 1)).isTrue()
-                assertThat(store.availableTokens("client-outage", requestsPerMinute = 1))
+                assertThat(store.tryConsume("client-outage-fast", requestsPerMinute = 1)).isTrue()
+                assertThat(store.availableTokens("client-outage-fast", requestsPerMinute = 1))
+                    .isEqualTo(Long.MAX_VALUE)
+            }
+        }
+    }
+
+    /**
+     * FF-2948 hotfix — slow-fail path: bounded-connect + fail-open when the DNS resolves but
+     * TCP connect hangs (DNS-limbo, or a routed-but-unreachable IP). This is the exact QA
+     * failure mode that surfaced after the initial 1.0.60 landed — `CompletableFuture.orTimeout`
+     * fires, but `.get()` wraps the underlying `TimeoutException` in `ExecutionException`, and
+     * an earlier `throw e.cause` re-emitted a raw `TimeoutException` past the fail-open catch.
+     *
+     * Uses `192.0.2.1` (RFC 5737 TEST-NET-1 — reserved for documentation, routes nowhere on
+     * conformant networks) so DNS resolves fast, but TCP connect hangs until our 1000ms bounded
+     * budget elapses — triggering the orTimeout path. Store must still return `true` from
+     * `tryConsume` (fail-open) inside a 3s wall-clock budget.
+     */
+    @Test
+    fun `FF-2948 hotfix - hanging TCP connect (orTimeout path) still fails open on tryConsume`() {
+        val budgetMs = 3000L
+        assertTimeoutPreemptively(Duration.ofMillis(budgetMs)) {
+            RedisRateLimitStore(
+                redisUri = "redis://192.0.2.1:6379",
+                keyPrefix = KEY_PREFIX,
+                idleTtl = Duration.ofMinutes(10),
+                connectTimeoutMs = 1000L,
+                commandTimeoutMs = 500L,
+            ).use { store ->
+                assertThat(store.tryConsume("client-outage-slow", requestsPerMinute = 1)).isTrue()
+                assertThat(store.availableTokens("client-outage-slow", requestsPerMinute = 1))
                     .isEqualTo(Long.MAX_VALUE)
             }
         }
