@@ -179,6 +179,30 @@ class RedisRateLimitStoreIT {
         }
     }
 
+    /**
+     * FF-2948 follow-up — fail-open must survive shutdown races. A request that reaches the store
+     * after `close()` (bean shutdown while requests are still draining) hits a shut-down
+     * connectExecutor: `supplyAsync` rejects synchronously with `RejectedExecutionException`, which
+     * is not a RedisException and would escape the fail-open catches — failing the request closed —
+     * unless boundedConnect normalises it.
+     */
+    @Test
+    fun `FF-2948 a request after close fails open instead of throwing RejectedExecutionException`() {
+        val store = RedisRateLimitStore(
+            redisUri = "redis://unavailable-testing.invalid:6379",
+            keyPrefix = KEY_PREFIX,
+            idleTtl = Duration.ofMinutes(10),
+            connectTimeoutMs = 1000L,
+            commandTimeoutMs = 500L,
+            connectCooldownMs = 0L, // no negative cache: force the post-close call to attempt a connect
+        )
+        store.close()
+
+        assertThat(store.tryConsume("client-post-close", requestsPerMinute = 1)).isTrue()
+        assertThat(store.availableTokens("client-post-close", requestsPerMinute = 1))
+            .isEqualTo(Long.MAX_VALUE)
+    }
+
     private fun storeA() = RedisRateLimitStore(uri, KEY_PREFIX, Duration.ofMinutes(10))
     private fun storeB() = RedisRateLimitStore(uri, KEY_PREFIX, Duration.ofMinutes(10))
 

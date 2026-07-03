@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
@@ -114,9 +115,19 @@ class RedisRateLimitStore @JvmOverloads constructor(
     @Volatile
     private var proxyManager: ProxyManager<ByteArray>? = null
 
-    /** `System.nanoTime()` deadline until which connect attempts are suppressed; null = no cooldown. */
+    /** `System.nanoTime()` deadline until which connect attempts are suppressed; [NO_COOLDOWN] = none. */
     @Volatile
-    private var connectCooldownUntilNanos: Long? = null
+    private var connectCooldownUntilNanos: Long = NO_COOLDOWN
+
+    /**
+     * Thrown on every request suppressed by the negative cache — i.e. on the hot path the cache
+     * exists to keep cheap — so it is allocated once (stack trace captured here, at construction)
+     * rather than paying `fillInStackTrace` per suppressed call. [failOpen] only logs the message,
+     * so the shared stack trace is never surfaced misleadingly.
+     */
+    private val connectCooldownException = RedisConnectionException(
+        "connect suppressed within ${connectCooldownMs}ms negative-cache window after a recent failure",
+    )
 
     /**
      * Count of real (non-short-circuited) connect attempts. Exposed [internal]ly so tests can assert
@@ -140,20 +151,20 @@ class RedisRateLimitStore @JvmOverloads constructor(
      */
     private fun connection(): StatefulRedisConnection<ByteArray, ByteArray> {
         connection?.let { return it }
-        if (inConnectCooldown()) throw connectCooldownException()
+        if (inConnectCooldown()) throw connectCooldownException
         synchronized(this) {
             connection?.let { return it }
-            if (inConnectCooldown()) throw connectCooldownException()
+            if (inConnectCooldown()) throw connectCooldownException
             try {
                 connection = boundedConnect()
-                connectCooldownUntilNanos = null
+                connectCooldownUntilNanos = NO_COOLDOWN
             } catch (e: RedisException) {
                 // Negative-cache the failure: until the window elapses, callers fail open
                 // immediately (see connection()'s pre-monitor guard) instead of serializing on this
                 // monitor and spawning another hung connect task per request.
                 if (connectCooldownMs > 0) {
                     connectCooldownUntilNanos =
-                        System.nanoTime() + Duration.ofMillis(connectCooldownMs).toNanos()
+                        System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(connectCooldownMs)
                 }
                 throw e
             }
@@ -162,14 +173,11 @@ class RedisRateLimitStore @JvmOverloads constructor(
     }
 
     private fun inConnectCooldown(): Boolean {
-        val until = connectCooldownUntilNanos ?: return false
+        val until = connectCooldownUntilNanos
+        if (until == NO_COOLDOWN) return false
         // nanoTime-difference comparison is wraparound-safe.
         return until - System.nanoTime() > 0
     }
-
-    private fun connectCooldownException() = RedisConnectionException(
-        "connect suppressed within ${connectCooldownMs}ms negative-cache window after a recent failure",
-    )
 
     /**
      * Connect on the dedicated executor, time-boxed to [connectTimeoutMs]. Always throws a
@@ -179,8 +187,15 @@ class RedisRateLimitStore @JvmOverloads constructor(
      */
     private fun boundedConnect(): StatefulRedisConnection<ByteArray, ByteArray> {
         connectAttempts.incrementAndGet()
-        val connectFuture = CompletableFuture
-            .supplyAsync({ redisClient.connect(ByteArrayCodec.INSTANCE) }, connectExecutor)
+        val connectFuture = try {
+            CompletableFuture
+                .supplyAsync({ redisClient.connect(ByteArrayCodec.INSTANCE) }, connectExecutor)
+        } catch (e: RejectedExecutionException) {
+            // close() has already shut connectExecutor down (request draining during bean
+            // shutdown) — supplyAsync rejects synchronously. Normalise so fail-open applies
+            // rather than failing the request closed.
+            throw RedisConnectionException("connect rejected: store is shutting down", e)
+        }
         try {
             // Time-box a copy() so connectFuture itself stays live: even after the copy is failed by
             // orTimeout, connectFuture can still complete normally when the OS resolver finally
@@ -204,6 +219,9 @@ class RedisRateLimitStore @JvmOverloads constructor(
                 ?: RedisConnectionException("connect failed", cause ?: e)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
+            // Same cleanup as the timeout branch: the abandoned in-executor connect may still
+            // succeed after we walk away — close it rather than leak the socket.
+            connectFuture.whenComplete { conn, _ -> conn?.close() }
             throw RedisConnectionException("connect interrupted", e)
         }
     }
@@ -319,5 +337,8 @@ class RedisRateLimitStore @JvmOverloads constructor(
 
         /** Default post-failure connect-suppression window when constructed without config. */
         const val DEFAULT_CONNECT_COOLDOWN_MS = 5000L
+
+        /** Sentinel for [connectCooldownUntilNanos]: no cooldown window is active. */
+        private const val NO_COOLDOWN = 0L
     }
 }
