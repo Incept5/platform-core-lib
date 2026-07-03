@@ -130,6 +130,8 @@ class RateLimitInterceptorTest {
         override fun redis() = object : RateLimitConfig.RedisConfig {
             override fun uri() = "redis://localhost:6379"
             override fun keyPrefix() = "rate-limit:"
+            override fun connectTimeoutMs() = 1000L
+            override fun commandTimeoutMs() = 500L
         }
         override fun paymentSession() = object : RateLimitConfig.PaymentSessionRateLimitConfig {
             override fun cancellationRequestsPerMinute() = 10
