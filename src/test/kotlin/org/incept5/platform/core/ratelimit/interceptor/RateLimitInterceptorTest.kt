@@ -132,6 +132,7 @@ class RateLimitInterceptorTest {
             override fun keyPrefix() = "rate-limit:"
             override fun connectTimeoutMs() = 1000L
             override fun commandTimeoutMs() = 500L
+            override fun connectCooldownMs() = 5000L
         }
         override fun paymentSession() = object : RateLimitConfig.PaymentSessionRateLimitConfig {
             override fun cancellationRequestsPerMinute() = 10

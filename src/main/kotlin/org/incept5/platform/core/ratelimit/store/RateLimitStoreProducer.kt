@@ -1,7 +1,9 @@
 package org.incept5.platform.core.ratelimit.store
 
+import io.micrometer.core.instrument.MeterRegistry
 import jakarta.annotation.PreDestroy
 import jakarta.enterprise.context.ApplicationScoped
+import jakarta.enterprise.inject.Instance
 import jakarta.enterprise.inject.Produces
 import org.incept5.platform.core.ratelimit.config.RateLimitConfig
 import org.slf4j.LoggerFactory
@@ -18,6 +20,9 @@ import org.slf4j.LoggerFactory
 @ApplicationScoped
 class RateLimitStoreProducer(
     private val config: RateLimitConfig,
+    /** The application's Micrometer registry, if one is on the classpath — used for the Redis
+     *  store's fail-open error counter so it lands on the same registry the module already uses. */
+    private val meterRegistry: Instance<MeterRegistry>,
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -38,6 +43,8 @@ class RateLimitStoreProducer(
                 bucket.idleTtl(),
                 redis.connectTimeoutMs(),
                 redis.commandTimeoutMs(),
+                redis.connectCooldownMs(),
+                if (meterRegistry.isResolvable) meterRegistry.get() else null,
             ).also { closeable = it }
         } else {
             logger.info("Rate-limit store: in-memory (per-instance)")

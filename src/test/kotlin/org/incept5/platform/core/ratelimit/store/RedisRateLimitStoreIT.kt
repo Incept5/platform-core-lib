@@ -1,5 +1,6 @@
 package org.incept5.platform.core.ratelimit.store
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
@@ -122,6 +123,84 @@ class RedisRateLimitStoreIT {
                     .isEqualTo(Long.MAX_VALUE)
             }
         }
+    }
+
+    /**
+     * FF-2948 follow-up — negative cache. A failed lazy connect must be cached for
+     * `connectCooldownMs` so a sustained outage does NOT re-run the bounded-connect ceremony on
+     * every request (which would serialize callers on the connect monitor and pile up one hung
+     * connect task per request). Asserted structurally via [RedisRateLimitStore.connectAttempts]
+     * rather than by timing: across many fail-open calls inside one cooldown window, exactly one
+     * real connect is attempted.
+     */
+    @Test
+    fun `FF-2948 a failed connect is negatively cached so repeated calls do not reconnect`() {
+        RedisRateLimitStore(
+            redisUri = "redis://unavailable-testing.invalid:6379",
+            keyPrefix = KEY_PREFIX,
+            idleTtl = Duration.ofMinutes(10),
+            connectTimeoutMs = 1000L,
+            commandTimeoutMs = 500L,
+            connectCooldownMs = 60_000L, // long window: every call below falls inside it
+        ).use { store ->
+            repeat(10) { assertThat(store.tryConsume("client-outage", requestsPerMinute = 1)).isTrue() }
+            assertThat(store.availableTokens("client-outage", requestsPerMinute = 1))
+                .isEqualTo(Long.MAX_VALUE)
+            // Only the first call attempted a connect; the rest short-circuited on the negative cache.
+            assertThat(store.connectAttempts.get()).isEqualTo(1L)
+        }
+    }
+
+    /**
+     * FF-2948 follow-up — the fail-open error counter must land on the *injected* MeterRegistry
+     * (the one the rest of the module publishes to), not only the global static registry, and must
+     * carry the `exception` tag so ops can tell a connection outage from a persistent command error.
+     */
+    @Test
+    fun `FF-2948 fail-open records the error counter on the injected registry with an exception tag`() {
+        val registry = SimpleMeterRegistry()
+        RedisRateLimitStore(
+            redisUri = "redis://unavailable-testing.invalid:6379",
+            keyPrefix = KEY_PREFIX,
+            idleTtl = Duration.ofMinutes(10),
+            connectTimeoutMs = 1000L,
+            commandTimeoutMs = 500L,
+            connectCooldownMs = 0L, // disable negative cache so each op records its own error
+            meterRegistry = registry,
+        ).use { store ->
+            store.tryConsume("client-outage", requestsPerMinute = 1)
+
+            val counter = registry.find("rate_limit_store_error_total")
+                .tag("op", "tryConsume")
+                .counter()
+            assertThat(counter).isNotNull
+            assertThat(counter!!.count()).isEqualTo(1.0)
+            assertThat(counter.id.getTag("exception")).isEqualTo("RedisConnectionException")
+        }
+    }
+
+    /**
+     * FF-2948 follow-up — fail-open must survive shutdown races. A request that reaches the store
+     * after `close()` (bean shutdown while requests are still draining) hits a shut-down
+     * connectExecutor: `supplyAsync` rejects synchronously with `RejectedExecutionException`, which
+     * is not a RedisException and would escape the fail-open catches — failing the request closed —
+     * unless boundedConnect normalises it.
+     */
+    @Test
+    fun `FF-2948 a request after close fails open instead of throwing RejectedExecutionException`() {
+        val store = RedisRateLimitStore(
+            redisUri = "redis://unavailable-testing.invalid:6379",
+            keyPrefix = KEY_PREFIX,
+            idleTtl = Duration.ofMinutes(10),
+            connectTimeoutMs = 1000L,
+            commandTimeoutMs = 500L,
+            connectCooldownMs = 0L, // no negative cache: force the post-close call to attempt a connect
+        )
+        store.close()
+
+        assertThat(store.tryConsume("client-post-close", requestsPerMinute = 1)).isTrue()
+        assertThat(store.availableTokens("client-post-close", requestsPerMinute = 1))
+            .isEqualTo(Long.MAX_VALUE)
     }
 
     private fun storeA() = RedisRateLimitStore(uri, KEY_PREFIX, Duration.ofMinutes(10))
