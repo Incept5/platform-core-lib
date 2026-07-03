@@ -13,6 +13,7 @@ import io.lettuce.core.SocketOptions
 import io.lettuce.core.TimeoutOptions
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.codec.ByteArrayCodec
+import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Metrics
 import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
@@ -23,6 +24,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicLong
 import java.util.function.Supplier
 
 /**
@@ -46,8 +48,15 @@ import java.util.function.Supplier
  * that has been deleted but whose zone still refuses to answer authoritatively) can hang
  * `RedisClient.connect(...)` for the full OS resolver default (~60s). This class therefore also
  * wraps the initial connect in a [CompletableFuture] on a dedicated single-thread executor and
- * enforces [connectTimeoutMs] via `orTimeout(...)` — the leaked in-executor thread stays contained
- * (one per outage-window connect attempt) while the caller unblocks promptly.
+ * enforces [connectTimeoutMs] via `orTimeout(...)` on a `copy()` of that future — so the caller
+ * unblocks promptly while the original future stays live long enough to `close()` any connection
+ * that arrives *after* the timeout (a post-timeout success must not leak a socket).
+ *
+ * A failed connect is then **negatively cached** for [connectCooldownMs]: during that window every
+ * request fails open immediately without re-attempting. Without this, a sustained outage would
+ * re-run the bounded connect on every request — serializing callers on the connect monitor and
+ * accumulating one hung in-executor thread per attempt. The negative cache bounds that to one
+ * attempt (and at most one hung thread) per window.
  *
  * ### Fail-open posture (FF-2948)
  *
@@ -59,7 +68,13 @@ import java.util.function.Supplier
  * skipped-when-not, matching the challenge marker store's fail-open posture and Iain's principle
  * that our own infra outage must not block a legitimate buyer.
  *
- * Every outage emits `rate_limit_store_error_total{op}` for ops visibility.
+ * NOTE: because a *permanent* misconfiguration (bad host/port/credentials) fails open exactly like
+ * a transient outage, it will not fail the deploy — alert on `rate_limit_store_error_total` to
+ * catch it. The `exception` tag distinguishes a persistent command error (bug/misconfig) from a
+ * connection outage.
+ *
+ * Every outage emits `rate_limit_store_error_total{op,exception}` on the injected [MeterRegistry]
+ * (or the global registry when none is injected) for ops visibility.
  */
 class RedisRateLimitStore @JvmOverloads constructor(
     redisUri: String,
@@ -67,6 +82,8 @@ class RedisRateLimitStore @JvmOverloads constructor(
     private val idleTtl: Duration,
     private val connectTimeoutMs: Long = DEFAULT_CONNECT_TIMEOUT_MS,
     commandTimeoutMs: Long = DEFAULT_COMMAND_TIMEOUT_MS,
+    private val connectCooldownMs: Long = DEFAULT_CONNECT_COOLDOWN_MS,
+    private val meterRegistry: MeterRegistry? = null,
 ) : RateLimitStore, AutoCloseable {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -97,6 +114,16 @@ class RedisRateLimitStore @JvmOverloads constructor(
     @Volatile
     private var proxyManager: ProxyManager<ByteArray>? = null
 
+    /** `System.nanoTime()` deadline until which connect attempts are suppressed; null = no cooldown. */
+    @Volatile
+    private var connectCooldownUntilNanos: Long? = null
+
+    /**
+     * Count of real (non-short-circuited) connect attempts. Exposed [internal]ly so tests can assert
+     * the negative cache actually suppresses reconnect storms during an outage.
+     */
+    internal val connectAttempts = AtomicLong()
+
     init {
         logger.info(
             "Initialised Redis rate-limit store (lazy connect): uri={}, keyPrefix={}, idleTtl={}",
@@ -107,37 +134,77 @@ class RedisRateLimitStore @JvmOverloads constructor(
     /**
      * Establish (or return the cached) Lettuce connection. Bounded by [connectTimeoutMs] so a
      * DNS-limbo hostname throws a fast [RedisConnectionException] instead of hanging past the
-     * surrounding request-path budget (Kong 60s, Narayana JTA 60s). See class KDoc.
+     * surrounding request-path budget (Kong 60s, Narayana JTA 60s). A failed connect is negatively
+     * cached for [connectCooldownMs] so a sustained outage does not re-run this ceremony on every
+     * request. See class KDoc.
      */
     private fun connection(): StatefulRedisConnection<ByteArray, ByteArray> {
         connection?.let { return it }
+        if (inConnectCooldown()) throw connectCooldownException()
         synchronized(this) {
             connection?.let { return it }
-            val future = CompletableFuture
-                .supplyAsync({ redisClient.connect(ByteArrayCodec.INSTANCE) }, connectExecutor)
-                .orTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
+            if (inConnectCooldown()) throw connectCooldownException()
             try {
-                connection = future.get()
-            } catch (e: ExecutionException) {
-                // Underlying Lettuce failure surfaces as ExecutionException; unwrap so callers see
-                // the same RedisConnectionException / RedisException they would have seen without
-                // the bounded wrapper.
-                throw e.cause ?: RedisConnectionException("connect failed", e)
-            } catch (e: TimeoutException) {
-                // orTimeout triggered — likely DNS-limbo (the OS resolver never answered). Cancel
-                // so we don't hold references to the leaked in-executor thread's future; the thread
-                // itself continues until the OS resolver eventually gives up (bounded, but outside
-                // our budget).
-                future.cancel(true)
-                throw RedisConnectionException(
-                    "connect timed out after ${connectTimeoutMs}ms (likely DNS resolution)",
-                    e,
-                )
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw RedisConnectionException("connect interrupted", e)
+                connection = boundedConnect()
+                connectCooldownUntilNanos = null
+            } catch (e: RedisException) {
+                // Negative-cache the failure: until the window elapses, callers fail open
+                // immediately (see connection()'s pre-monitor guard) instead of serializing on this
+                // monitor and spawning another hung connect task per request.
+                if (connectCooldownMs > 0) {
+                    connectCooldownUntilNanos =
+                        System.nanoTime() + Duration.ofMillis(connectCooldownMs).toNanos()
+                }
+                throw e
             }
             return connection!!
+        }
+    }
+
+    private fun inConnectCooldown(): Boolean {
+        val until = connectCooldownUntilNanos ?: return false
+        // nanoTime-difference comparison is wraparound-safe.
+        return until - System.nanoTime() > 0
+    }
+
+    private fun connectCooldownException() = RedisConnectionException(
+        "connect suppressed within ${connectCooldownMs}ms negative-cache window after a recent failure",
+    )
+
+    /**
+     * Connect on the dedicated executor, time-boxed to [connectTimeoutMs]. Always throws a
+     * [RedisException] on failure so the caller's fail-open catch always applies (a bare
+     * `TimeoutException` or a non-Lettuce cause must never escape). A connection that completes
+     * *after* the timeout is closed rather than leaked.
+     */
+    private fun boundedConnect(): StatefulRedisConnection<ByteArray, ByteArray> {
+        connectAttempts.incrementAndGet()
+        val connectFuture = CompletableFuture
+            .supplyAsync({ redisClient.connect(ByteArrayCodec.INSTANCE) }, connectExecutor)
+        try {
+            // Time-box a copy() so connectFuture itself stays live: even after the copy is failed by
+            // orTimeout, connectFuture can still complete normally when the OS resolver finally
+            // answers — the whenComplete below then closes that late connection.
+            return connectFuture.copy().orTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS).get()
+        } catch (e: ExecutionException) {
+            // get() always wraps an exceptional completion in ExecutionException — including the
+            // TimeoutException orTimeout completes with. Unwrap and branch on the cause.
+            val cause = e.cause
+            if (cause is TimeoutException) {
+                // orTimeout fired — likely DNS-limbo. Don't cancel connectFuture (the in-executor
+                // thread runs until the resolver gives up regardless); instead close whatever it
+                // eventually produces so a post-timeout success does not leak a socket.
+                connectFuture.whenComplete { conn, _ -> conn?.close() }
+                throw RedisConnectionException(
+                    "connect timed out after ${connectTimeoutMs}ms (likely DNS resolution)", cause,
+                )
+            }
+            // Normalise any other failure to a RedisException so fail-open always applies.
+            throw cause as? RedisException
+                ?: RedisConnectionException("connect failed", cause ?: e)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw RedisConnectionException("connect interrupted", e)
         }
     }
 
@@ -161,11 +228,10 @@ class RedisRateLimitStore @JvmOverloads constructor(
                 logger.debug("Rate limit exceeded for key: {}, limit: {}/min", key, requestsPerMinute)
             }
             allowed
-        } catch (e: RedisConnectionException) {
-            failOpen("tryConsume", key, e)
-            true
         } catch (e: RedisException) {
-            // bucket4j-redis surfaces Redis command failures (incl. command-timeout) as RedisException.
+            // Any Redis failure fails open: a lazy-connect failure (incl. the bounded-connect
+            // timeout, thrown as RedisConnectionException — a RedisException) or a command failure
+            // (incl. command-timeout) that bucket4j-redis surfaces as RedisException.
             failOpen("tryConsume", key, e)
             true
         }
@@ -174,9 +240,6 @@ class RedisRateLimitStore @JvmOverloads constructor(
     override fun availableTokens(key: String, requestsPerMinute: Int): Long {
         return try {
             bucket(key, requestsPerMinute).availableTokens
-        } catch (e: RedisConnectionException) {
-            failOpen("availableTokens", key, e)
-            Long.MAX_VALUE
         } catch (e: RedisException) {
             failOpen("availableTokens", key, e)
             Long.MAX_VALUE
@@ -198,10 +261,8 @@ class RedisRateLimitStore @JvmOverloads constructor(
             if (keys.isNotEmpty()) {
                 commands.del(*keys.toTypedArray())
             }
-        } catch (e: RedisConnectionException) {
-            // Admin-facing clear on an outage → silent no-op is acceptable. Ops sees the metric.
-            failOpen("clear", key = null, e)
         } catch (e: RedisException) {
+            // Admin-facing clear on an outage → silent no-op is acceptable. Ops sees the metric.
             failOpen("clear", key = null, e)
         }
     }
@@ -236,10 +297,16 @@ class RedisRateLimitStore @JvmOverloads constructor(
             .build()
 
     private fun failOpen(op: String, key: String?, e: Exception) {
-        Metrics.counter("rate_limit_store_error_total", "op", op).increment()
+        val exception = e.javaClass.simpleName
+        // Prefer the injected registry (the one the rest of the module publishes to); fall back to
+        // the global registry for no-CDI/test construction. The `exception` tag lets ops tell a
+        // persistent command error (bug/misconfig) apart from a transient connection outage.
+        (meterRegistry ?: Metrics.globalRegistry)
+            .counter("rate_limit_store_error_total", "op", op, "exception", exception)
+            .increment()
         logger.warn(
-            "rate_limit_store_error op={} key={}: {} — failing open",
-            op, key ?: "(all)", e.message,
+            "rate_limit_store_error op={} key={} exception={}: {} — failing open",
+            op, key ?: "(all)", exception, e.message,
         )
     }
 
@@ -249,5 +316,8 @@ class RedisRateLimitStore @JvmOverloads constructor(
 
         /** Default per-command timeout when constructed without config (tests / no-CDI). */
         const val DEFAULT_COMMAND_TIMEOUT_MS = 500L
+
+        /** Default post-failure connect-suppression window when constructed without config. */
+        const val DEFAULT_CONNECT_COOLDOWN_MS = 5000L
     }
 }

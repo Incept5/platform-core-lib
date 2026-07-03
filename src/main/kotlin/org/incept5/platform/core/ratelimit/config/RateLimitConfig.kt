@@ -143,6 +143,16 @@ interface RateLimitConfig {
          */
         @WithDefault("500")
         fun commandTimeoutMs(): Long
+
+        /**
+         * After a failed lazy connect, the store suppresses further connect attempts for this
+         * window (a negative cache) and fails open immediately. Without it, a sustained Redis
+         * outage makes every request re-run the bounded-connect ceremony — serializing callers on
+         * the connect monitor and leaking one hung connect thread per attempt. Set to 0 to disable
+         * the negative cache and retry on every request. Milliseconds. Default: 5000ms.
+         */
+        @WithDefault("5000")
+        fun connectCooldownMs(): Long
     }
 
     /**
