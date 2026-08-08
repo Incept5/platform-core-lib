@@ -5,6 +5,7 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTVerificationException
 import com.auth0.jwt.interfaces.RSAKeyProvider
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
@@ -320,62 +321,88 @@ open class JwksKeyProvider(private val jwksUrl: String) : RSAKeyProvider {
         }
     }
     
+    /**
+     * Parse a JWKS document (RFC 7517) and cache every usable RSA signing key by `kid`.
+     *
+     * Parsed with a real JSON parser rather than a regex. The previous regex delimited the key set
+     * with `"keys"\s*:\s*\[([^\]]+)\]`, whose negated character class stops at the *first* `]` in
+     * the document — which, for any IdP that publishes the X.509 chain, is the one closing a key's
+     * nested `x5c` array, not the one closing `keys`. Every such key set (Keycloak's included) was
+     * therefore reported as "No valid RSA keys found in JWKS", an error naming the wrong cause. A
+     * tighter regex would only move that boundary; JSON is not a regular language.
+     *
+     * Keys the platform cannot use for RS256 signature verification are skipped rather than
+     * failing the document: non-RSA key types, keys explicitly published for encryption
+     * (`"use": "enc"` — Keycloak serves an RSA-OAEP key alongside the RS256 signing key), and any
+     * individual key that will not decode. A key set legitimately carries keys this platform has
+     * no use for, including during a rotation overlap, and one unusable key must not discard the
+     * rest of the set.
+     *
+     * Still `protected open`: consumers overriding it keep working.
+     */
     protected open fun parseJwks(json: String) {
-        // Simple JSON parsing for JWKS format
-        // Expected format: {"keys": [{"kid": "...", "n": "...", "e": "...", "kty": "RSA", "use": "sig"}]}
-        
         try {
-            // Extract keys array from JSON
-            val keysMatch = "\"keys\"\\s*:\\s*\\[([^\\]]+)\\]".toRegex().find(json)
+            val keys = MAPPER.readTree(json).get("keys")
                 ?: throw UnknownTokenException("No 'keys' array found in JWKS")
-            
-            val keysJson = keysMatch.groupValues[1]
-            
-            // Parse each key object
-            val keyObjects = "\\{([^}]+)\\}".toRegex().findAll(keysJson)
-            
-            for (keyMatch in keyObjects) {
+            if (!keys.isArray) {
+                throw UnknownTokenException("JWKS 'keys' is not an array")
+            }
+
+            var parsed = 0
+            for (key in keys) {
+                // A missing "use" means the key is usable for signing — RFC 7517 makes the field
+                // optional, and IdPs that omit it must keep working.
+                if (key.text("kty") != "RSA") continue
+                val use = key.text("use")
+                if (use != null && use != "sig") continue
+
+                val kid = key.text("kid") ?: continue
+                val n = key.text("n") ?: continue
+                val e = key.text("e") ?: continue
                 try {
-                    val keyJson = keyMatch.value
-                    
-                    // Extract required fields
-                    val kid = extractJsonField(keyJson, "kid")
-                    val n = extractJsonField(keyJson, "n")
-                    val e = extractJsonField(keyJson, "e")
-                    val kty = extractJsonField(keyJson, "kty")
-                    
-                    // Only process RSA keys for signature verification
-                    if (kty != "RSA") continue
-                    
-                    // Decode Base64URL encoded modulus and exponent
+                    // Base64URL-encoded modulus and exponent, unsigned big-endian.
                     val modulus = java.math.BigInteger(1, Base64.getUrlDecoder().decode(n))
                     val exponent = java.math.BigInteger(1, Base64.getUrlDecoder().decode(e))
-                    
-                    // Create RSA public key
+
                     val spec = java.security.spec.RSAPublicKeySpec(modulus, exponent)
                     val keyFactory = java.security.KeyFactory.getInstance("RSA")
-                    val publicKey = keyFactory.generatePublic(spec) as RSAPublicKey
-                    
-                    keyCache[kid] = publicKey
+                    keyCache[kid] = keyFactory.generatePublic(spec) as RSAPublicKey
+                    parsed++
                     log.debug("Cached RSA public key with ID: $kid")
                 } catch (e: Exception) {
-                    log.warn("Failed to parse key from JWKS", e)
+                    log.warn("Skipping unparseable JWKS key '$kid'", e)
                 }
             }
-            
-            if (keyCache.isEmpty()) {
-                throw UnknownTokenException("No valid RSA keys found in JWKS")
+
+            if (parsed == 0) {
+                throw UnknownTokenException("No valid RSA signing keys found in JWKS")
             }
         } catch (e: Exception) {
             if (e is UnknownTokenException) throw e
             throw UnknownTokenException("Failed to parse JWKS: ${e.message}", e)
         }
     }
-    
-    private fun extractJsonField(json: String, field: String): String {
-        val pattern = "\"$field\"\\s*:\\s*\"([^\"]+)\"".toRegex()
-        val match = pattern.find(json)
-            ?: throw UnknownTokenException("Required field '$field' not found in JWKS key")
-        return match.groupValues[1]
+
+    /**
+     * The value of a JWK's string member, or null if absent or not a string.
+     *
+     * Deliberately not `get(field)?.asText()`: on a JSON `null` that yields the four-character
+     * string `"null"`, which is valid base64url and would be decoded into a nonsense modulus and
+     * cached under the key's `kid` rather than skipping the key.
+     */
+    private fun com.fasterxml.jackson.databind.JsonNode.text(field: String): String? =
+        get(field)?.takeIf { it.isTextual }?.asText()
+
+    companion object {
+        /**
+         * Shared rather than per-instance, and deliberately so: [JwksKeyProvider]'s constructor
+         * calls [parseJwks] through [fetchKeys], and Kotlin initialises a *subclass*'s
+         * constructor-property backing fields only after the superclass constructor returns. An
+         * instance mapper field would therefore be null on that first call for any subclass that
+         * overrides the parse. Companion state is initialised on first class access, so it is
+         * already there. `ObjectMapper` is safe for concurrent reads once configured, and this one
+         * is never configured after construction.
+         */
+        private val MAPPER = ObjectMapper()
     }
 }

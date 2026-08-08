@@ -31,6 +31,18 @@ class JwksKeyProviderTest {
         return JwksKeyProvider(jwksUrl)
     }
 
+    private fun generateRsaKeyPair(): RSAPublicKey {
+        val kpg = KeyPairGenerator.getInstance("RSA")
+        kpg.initialize(2048)
+        return kpg.generateKeyPair().public as RSAPublicKey
+    }
+
+    private fun modulus(key: RSAPublicKey): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(key.modulus.toByteArray())
+
+    private fun exponent(key: RSAPublicKey): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(key.publicExponent.toByteArray())
+
     @Test
     fun `should parse JWKS and cache public keys`(wireMockRuntimeInfo: WireMockRuntimeInfo) {
         // Given a JWKS response with RSA keys
@@ -211,6 +223,118 @@ class JwksKeyProviderTest {
         exception.message shouldContain "Public key not found"
     }
     
+    @Test
+    fun `should parse a key set whose keys carry an x5c certificate chain`(wireMockRuntimeInfo: WireMockRuntimeInfo) {
+        // Given a Keycloak-shaped JWKS: the signing key publishes its X.509 chain as a nested
+        // array, and an RSA-OAEP encryption key sits alongside it. The nested `]` closing `x5c`
+        // is what the old regex parser mistook for the end of the key set — it read a truncated
+        // fragment of the first key and reported "No valid RSA keys found in JWKS".
+        val sig = generateRsaKeyPair()
+        val enc = generateRsaKeyPair()
+
+        val jwksJson = """
+        {
+          "keys": [
+            {
+              "kid": "sig-key",
+              "kty": "RSA",
+              "alg": "RS256",
+              "use": "sig",
+              "n": "${modulus(sig)}",
+              "e": "${exponent(sig)}",
+              "x5c": [ "MIICmzCCAYMCBgGY", "MIIDdzCCAl+gAwIB" ],
+              "x5t": "abc123",
+              "x5t#S256": "def456"
+            },
+            {
+              "kid": "enc-key",
+              "kty": "RSA",
+              "alg": "RSA-OAEP",
+              "use": "enc",
+              "n": "${modulus(enc)}",
+              "e": "${exponent(enc)}",
+              "x5c": [ "MIICmzCCAYMCBgGY" ]
+            }
+          ]
+        }
+        """.trimIndent()
+
+        // When parsing the JWKS
+        val provider = createTestJwksProvider(wireMockRuntimeInfo, jwksJson)
+
+        // Then the signing key — the second key in document order after the nested array — is
+        // cached with its true modulus
+        val retrieved = provider.getPublicKeyById("sig-key")
+        retrieved.modulus shouldBe sig.modulus
+        retrieved.publicExponent shouldBe sig.publicExponent
+
+        // And the encryption key is not: it cannot verify an RS256 signature
+        val exception = shouldThrow<UnknownTokenException> { provider.getPublicKeyById("enc-key") }
+        exception.message shouldContain "Public key not found"
+    }
+
+    @Test
+    fun `should cache a key that omits the optional use field`(wireMockRuntimeInfo: WireMockRuntimeInfo) {
+        // Given a JWKS whose key has no "use" — RFC 7517 makes the field optional, and an IdP
+        // that omits it must not be treated as publishing no signing keys
+        val kp = generateRsaKeyPair()
+        val jwksJson = """
+        {"keys":[{"kid":"no-use","kty":"RSA","n":"${modulus(kp)}","e":"${exponent(kp)}"}]}
+        """.trimIndent()
+
+        // When parsing the JWKS
+        val provider = createTestJwksProvider(wireMockRuntimeInfo, jwksJson)
+
+        // Then the key is usable
+        provider.getPublicKeyById("no-use").modulus shouldBe kp.modulus
+    }
+
+    @Test
+    fun `should keep the rest of the key set when one key is undecodable`(wireMockRuntimeInfo: WireMockRuntimeInfo) {
+        // Given a JWKS carrying one key whose modulus is not valid base64url
+        val good = generateRsaKeyPair()
+        val jwksJson = """
+        {
+          "keys": [
+            {"kid":"broken","kty":"RSA","use":"sig","n":"!!!not base64!!!","e":"AQAB"},
+            {"kid":"good","kty":"RSA","use":"sig","n":"${modulus(good)}","e":"${exponent(good)}"}
+          ]
+        }
+        """.trimIndent()
+
+        // When parsing the JWKS
+        val provider = createTestJwksProvider(wireMockRuntimeInfo, jwksJson)
+
+        // Then the usable key is still cached
+        provider.getPublicKeyById("good").modulus shouldBe good.modulus
+    }
+
+    @Test
+    fun `should skip a key whose members are JSON null rather than caching a nonsense key`(
+        wireMockRuntimeInfo: WireMockRuntimeInfo
+    ) {
+        // Given a JWKS whose first key has a null modulus. Read as text that is the string
+        // "null" — four valid base64url characters — so it must be rejected as a non-string,
+        // not decoded into a 3-byte modulus and cached under "null-n".
+        val good = generateRsaKeyPair()
+        val jwksJson = """
+        {
+          "keys": [
+            {"kid":"null-n","kty":"RSA","use":"sig","n":null,"e":"AQAB"},
+            {"kid":"good","kty":"RSA","use":"sig","n":"${modulus(good)}","e":"${exponent(good)}"}
+          ]
+        }
+        """.trimIndent()
+
+        // When parsing the JWKS
+        val provider = createTestJwksProvider(wireMockRuntimeInfo, jwksJson)
+
+        // Then only the real key is cached
+        provider.getPublicKeyById("good").modulus shouldBe good.modulus
+        val exception = shouldThrow<UnknownTokenException> { provider.getPublicKeyById("null-n") }
+        exception.message shouldContain "Public key not found"
+    }
+
     @Test
     fun `should return null for getPrivateKey`(wireMockRuntimeInfo: WireMockRuntimeInfo) {
         // Given any JWKS provider
