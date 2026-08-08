@@ -27,25 +27,76 @@ import java.time.Instant
  *
  * Step-up tokens (one-shot, context-bound) are verified via [verifyStepUp], which
  * additionally enforces a `purpose` claim and `purpose_context` key/value pairs.
+ *
+ * ## Second issuers, and supplying your own key provider
+ *
+ * The CDI bean reads `single-issuer-jwt.*` and builds its own [JwksKeyProvider] from
+ * `single-issuer-jwt.jwks-url`. A consumer that needs a *second* validator — typically a
+ * staff/admin IdP alongside its own tokens — constructs one programmatically instead, and may
+ * hand it a key provider it built itself:
+ *
+ * ```kotlin
+ * val staff = SingleIssuerJwtValidator(
+ *     issuer = "https://idp.example/realms/staff",
+ *     audience = "chivo-admin",
+ *     keyProvider = MyKeyProvider(jwksUrl),
+ * )
+ * ```
+ *
+ * That seam exists so no consumer has to subclass this class, or rebuild its verification policy,
+ * to change where keys come from.
  */
 @ApplicationScoped
-class SingleIssuerJwtValidator @Inject constructor(
-    @ConfigProperty(name = "single-issuer-jwt.issuer")
+class SingleIssuerJwtValidator private constructor(
     private val issuer: String,
-    @ConfigProperty(name = "single-issuer-jwt.audience")
     private val audience: String,
-    @ConfigProperty(name = "single-issuer-jwt.jwks-url")
-    private val jwksUrl: String,
-    @ConfigProperty(name = "single-issuer-jwt.leeway-seconds", defaultValue = "30")
-    private val leewaySeconds: Long = 30L
+    private val jwksUrl: String?,
+    private val leewaySeconds: Long,
+    private val suppliedKeyProvider: JwksKeyProvider?
 ) {
+    /** The CDI bean: one validator per application, configured from `single-issuer-jwt.*`. */
+    @Inject
+    constructor(
+        @ConfigProperty(name = "single-issuer-jwt.issuer")
+        issuer: String,
+        @ConfigProperty(name = "single-issuer-jwt.audience")
+        audience: String,
+        @ConfigProperty(name = "single-issuer-jwt.jwks-url")
+        jwksUrl: String,
+        @ConfigProperty(name = "single-issuer-jwt.leeway-seconds", defaultValue = "30")
+        leewaySeconds: Long = 30L
+    ) : this(issuer, audience, jwksUrl, leewaySeconds, null)
+
+    /**
+     * A validator for [issuer] that resolves signing keys through [keyProvider] rather than
+     * fetching `single-issuer-jwt.jwks-url` itself. Not a CDI bean — construct it where you need
+     * it (a `@Produces` method, or a `@Singleton` wrapper).
+     */
+    constructor(
+        issuer: String,
+        audience: String,
+        keyProvider: JwksKeyProvider,
+        leewaySeconds: Long
+    ) : this(issuer, audience, null, leewaySeconds, keyProvider)
+
+    /** As above, with the default 30s clock-skew leeway. */
+    constructor(
+        issuer: String,
+        audience: String,
+        keyProvider: JwksKeyProvider
+    ) : this(issuer, audience, null, 30L, keyProvider)
+
     private val log = Logger.getLogger(SingleIssuerJwtValidator::class.java)
 
     // Lazy — defer first JWKS fetch until first verify call so an unreachable
-    // JWKS endpoint at boot doesn't prevent startup.
+    // JWKS endpoint at boot doesn't prevent startup. A supplied provider is used
+    // as given; constructing it eagerly was the caller's choice, not ours.
     private val jwksProvider: JwksKeyProvider by lazy {
-        log.info("Initializing SingleIssuerJwtValidator JWKS provider: $jwksUrl")
-        JwksKeyProvider(jwksUrl)
+        suppliedKeyProvider ?: run {
+            val url = requireNotNull(jwksUrl) { "No JWKS URL and no key provider supplied" }
+            log.info("Initializing SingleIssuerJwtValidator JWKS provider: $url")
+            JwksKeyProvider(url)
+        }
     }
 
     /**

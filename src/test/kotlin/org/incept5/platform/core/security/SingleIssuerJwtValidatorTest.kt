@@ -322,6 +322,79 @@ class SingleIssuerJwtValidatorTest {
         ex.message shouldContain "Invalid token format"
     }
 
+    // --- Key-provider seam ---
+
+    @Test
+    fun `verify resolves keys through a caller-supplied key provider`(wm: WireMockRuntimeInfo) {
+        // Given a validator for a second issuer, handed a key provider the caller built itself —
+        // no subclassing, and no read of single-issuer-jwt.jwks-url
+        val kp = generateKeyPair()
+        val staffIssuer = "https://idp.example/realms/staff"
+        val staffAudience = "admin-console"
+        stubJwks(wm, listOf(JwkEntry("staff-key", kp.public as RSAPublicKey)))
+
+        val supplied = JwksKeyProvider("${wm.httpBaseUrl}$jwksPath")
+        val validator = SingleIssuerJwtValidator(
+            issuer = staffIssuer,
+            audience = staffAudience,
+            keyProvider = supplied
+        )
+
+        val token = JWT.create()
+            .withKeyId("staff-key")
+            .withIssuer(staffIssuer)
+            .withAudience(staffAudience)
+            .withSubject("staff-1")
+            .withIssuedAt(Date.from(Instant.now()))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(900)))
+            .sign(rsa(kp))
+
+        // When verifying a token signed by that provider's key
+        val claims = validator.verify(token)
+
+        // Then the full verification policy still applies, against the supplied keys
+        claims.subject shouldBe "staff-1"
+        claims.issuer shouldBe staffIssuer
+        claims.audience shouldContainExactly listOf(staffAudience)
+    }
+
+    @Test
+    fun `a supplied key provider does not weaken issuer and signature checks`(wm: WireMockRuntimeInfo) {
+        // Given the same seam, and a token from a different issuer signed by an unrelated key
+        val served = generateKeyPair()
+        val attacker = generateKeyPair()
+        stubJwks(wm, listOf(JwkEntry("staff-key", served.public as RSAPublicKey)))
+
+        val validator = SingleIssuerJwtValidator(
+            issuer = "https://idp.example/realms/staff",
+            audience = "admin-console",
+            keyProvider = JwksKeyProvider("${wm.httpBaseUrl}$jwksPath"),
+            leewaySeconds = 0L
+        )
+
+        val wrongIssuer = JWT.create()
+            .withKeyId("staff-key")
+            .withIssuer("https://evil.example")
+            .withAudience("admin-console")
+            .withSubject("staff-1")
+            .withIssuedAt(Date.from(Instant.now()))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(900)))
+            .sign(rsa(served))
+
+        val forged = JWT.create()
+            .withKeyId("staff-key")
+            .withIssuer("https://idp.example/realms/staff")
+            .withAudience("admin-console")
+            .withSubject("staff-1")
+            .withIssuedAt(Date.from(Instant.now()))
+            .withExpiresAt(Date.from(Instant.now().plusSeconds(900)))
+            .sign(rsa(attacker))
+
+        // When/Then both are rejected
+        shouldThrow<UnknownTokenException> { validator.verify(wrongIssuer) }
+        shouldThrow<UnknownTokenException> { validator.verify(forged) }
+    }
+
     // --- Helpers ---
 
     private data class JwkEntry(val kid: String, val publicKey: RSAPublicKey)
