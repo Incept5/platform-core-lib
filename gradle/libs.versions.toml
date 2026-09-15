@@ -14,7 +14,7 @@ java-jwt = "4.4.0"
 correlation = "1.0.20"
 error-lib = "1.0.50"
 cryptography-lib = "1.0.28"
-authz-lib = "1.0.29"
+authz-lib = "1.0.30" # FF-3775 (EPIC-59): {segment} single-segment wildcard in the authz ignore-path matcher, consumed by FF-3776
 
 [libraries]
 # Core dependencies
