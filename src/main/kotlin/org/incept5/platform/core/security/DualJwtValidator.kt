@@ -141,6 +141,9 @@ class DualJwtValidator @Inject constructor(
         try {
             val jwt = JWT.require(requireSupabaseAlgorithm())
                 .withClaimPresence("role")
+                // Require exp so a signed token with no expiry is not treated as valid forever
+                // (story AC13). GoTrue always sets exp, so no legitimate token is affected.
+                .withClaimPresence("exp")
                 .withIssuer("$baseApiUrl$supabaseAuthPath")
                 .build()
                 .verify(token)
@@ -181,6 +184,10 @@ class DualJwtValidator @Inject constructor(
         try {
             val jwt = JWT.require(requirePlatformAlgorithm())
                 .withClaimPresence("role")
+                // Require exp so a signed token with no expiry is not treated as valid forever
+                // (story AC13). JwtTokenGenerator always sets withExpiresAt, so no legitimate
+                // FanFair-issued token is affected.
+                .withClaimPresence("exp")
                 .withIssuer("$baseApiUrl$platformOauthPath")
                 .build()
                 .verify(token)
