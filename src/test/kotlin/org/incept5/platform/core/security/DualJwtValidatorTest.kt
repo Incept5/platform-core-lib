@@ -283,6 +283,52 @@ class DualJwtValidatorTest {
         exception.message?.contains("Invalid Supabase token") shouldBe true
     }
 
+    @Test
+    fun `should throw UnknownTokenException for Supabase token with no exp claim`() {
+        // Given a correctly signed Supabase token that carries no expiry
+        val token = JWT.create()
+            .withSubject("test-user")
+            .withIssuer("$baseApiUrl$supabaseAuthPath")
+            .withClaim("role", "entity_user")
+            // no withExpiresAt
+            .sign(algorithm)
+
+        // When/Then — a missing exp must be rejected, not treated as valid forever (AC13)
+        val exception = shouldThrow<UnknownTokenException> {
+            dualJwtValidator.validateToken(token)
+        }
+        exception.message?.contains("Invalid Supabase token") shouldBe true
+    }
+
+    @Test
+    fun `should throw UnknownTokenException for Platform token with no exp claim`() {
+        // Given a correctly signed platform token that carries no expiry
+        val token = JWT.create()
+            .withSubject("client-123")
+            .withIssuer("$baseApiUrl$platformOauthPath")
+            .withClaim("role", "entity_admin")
+            .withClaim("scopes", listOf("payment:read"))
+            // no withExpiresAt
+            .sign(algorithm)
+
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
+            hmacFallbackEnabled = true
+        )
+
+        // When/Then (AC13)
+        val exception = shouldThrow<UnknownTokenException> {
+            validator.validateToken(token)
+        }
+        exception.message?.contains("Invalid Platform token") shouldBe true
+    }
+
     // Utility Methods Tests
 
     @Test

@@ -263,6 +263,39 @@ class SupabaseTokenExchangePluginTest {
         result.shouldBeNull()
     }
 
+    // A correctly-shaped token with the right issuer and claims but signed with a key the
+    // platform does not trust must not exchange to a principal. This is the seam behind the
+    // filter's fail-closed behaviour (FF-3774): no verified token, no principal.
+    @Test
+    fun `token signed with the wrong key returns null`() {
+        val wrongKey = Algorithm.HMAC256("a-different-secret-key-that-is-also-long-enough-xxxxx".toByteArray())
+        val token = JWT.create()
+            .withSubject(UUID.randomUUID().toString())
+            .withClaim("role", "platform_admin")
+            .withIssuer("$baseApiUrl$supabaseAuthPath")
+            .withExpiresAt(Instant.now().plusSeconds(3600))
+            .sign(wrongKey)
+
+        val result = plugin.exchangeToken(token)
+
+        result.shouldBeNull()
+    }
+
+    // A correctly-signed token with no expiry claim must not exchange (AC13).
+    @Test
+    fun `token with no exp claim returns null`() {
+        val token = JWT.create()
+            .withSubject(UUID.randomUUID().toString())
+            .withClaim("role", "platform_admin")
+            .withIssuer("$baseApiUrl$supabaseAuthPath")
+            // no withExpiresAt
+            .sign(algorithm)
+
+        val result = plugin.exchangeToken(token)
+
+        result.shouldBeNull()
+    }
+
     // AC9: entity_admin with null entityType has no entity roles
     @Test
     fun `entity_admin with null entityType has global role but no entity roles`() {
