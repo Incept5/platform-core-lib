@@ -117,6 +117,81 @@ class DualJwtValidatorTest {
         result.scopes shouldBe emptyList()
     }
 
+    // AAL (authenticator assurance level) carry-through — FF-3798 (H5)
+
+    @Test
+    fun `carries aal2 and SUPABASE source through from a verified Supabase token`() {
+        val token = createSupabaseToken(
+            subject = "admin-aal2",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal2"
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.authenticatorAssuranceLevel shouldBe "aal2"
+        result.tokenSource shouldBe TokenSource.SUPABASE
+    }
+
+    @Test
+    fun `carries aal1 through from a single-factor Supabase token`() {
+        val token = createSupabaseToken(
+            subject = "admin-aal1",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal1"
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.authenticatorAssuranceLevel shouldBe "aal1"
+        result.tokenSource shouldBe TokenSource.SUPABASE
+    }
+
+    @Test
+    fun `leaves assurance level null when the Supabase token has no aal claim`() {
+        val token = createSupabaseToken(
+            subject = "admin-no-aal",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.authenticatorAssuranceLevel shouldBe null
+        result.tokenSource shouldBe TokenSource.SUPABASE
+    }
+
+    @Test
+    fun `platform token has no assurance level and PLATFORM source`() {
+        val token = createPlatformToken(
+            subject = "client-123",
+            role = "entity_admin",
+            entityType = "partner",
+            entityId = "partner-789",
+            scopes = listOf("payment:read")
+        )
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
+            hmacFallbackEnabled = true
+        )
+
+        val result = validator.validateToken(token)
+
+        result.authenticatorAssuranceLevel shouldBe null
+        result.tokenSource shouldBe TokenSource.PLATFORM
+    }
+
     // Platform Token Tests
 
     @Test
@@ -399,13 +474,16 @@ class DualJwtValidatorTest {
         subject: String,
         role: String,
         entityType: String?,
-        entityId: String?
+        entityId: String?,
+        aal: String? = null
     ): String {
         val tokenBuilder = JWT.create()
             .withSubject(subject)
             .withIssuer("$baseApiUrl$supabaseAuthPath")
             .withClaim("role", role)
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+
+        aal?.let { tokenBuilder.withClaim("aal", it) }
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()

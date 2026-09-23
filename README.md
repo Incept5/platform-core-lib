@@ -106,6 +106,30 @@ The `SupabaseTokenExchangePlugin` implements authz-lib's `TokenExchangePlugin` i
 
 The plugin handles legacy role name mapping (e.g. `platform_admin` to `backoffice.admin`) during the transition period. This mapping will be removed in a future release once all tokens use the new role names directly.
 
+The plugin also carries the Supabase `aal` (authenticator assurance level) claim and the token source through onto the `ApiPrincipal`, so downstream enforcement can tell a single-factor (`aal1`) session from a TOTP-verified (`aal2`) one, and a Supabase user token from a platform (API-key/service) token.
+
+## Server-side MFA enforcement (AAL2)
+
+`AssuranceLevelFilter` refuses a Supabase user token that holds a configured role but has not completed a second factor, returning **HTTP 403** with error code **`MFA_REQUIRED`**. It runs after authz-lib's `AuthzFilter` has installed the verified `ApiPrincipal` and only reads that principal — it never decodes the Authorization header.
+
+It is behaviour-neutral until a consuming application opts in via two config keys (both default to empty = no enforcement):
+
+```yaml
+auth:
+  mfa:
+    # Mapped role names whose Supabase user tokens must be aal2 (password + verified TOTP).
+    # Empty disables enforcement. Legacy platform_admin maps to backoffice.admin, so listing
+    # backoffice.admin covers it.
+    aal2-required-roles: backoffice.admin
+    # Exact "METHOD /path" entries a single-factor user holding a required role may still reach
+    # (e.g. an invite flow's pre-enrolment profile load). Exact match, no wildcards.
+    aal1-allowed-endpoints: GET /api/v1/users/profile
+```
+
+Exemptions, by design: platform (API-key/service) tokens carry no `aal` and are never refused; requests without a verified principal (public/ignored paths) pass; and only principals actually holding a configured role are governed. A missing `aal` claim is treated as single-factor. A malformed `aal1-allowed-endpoints` entry fails application start.
+
+The refusal is **403, not 401**, because consuming portals sign the user out on a 401 — a 403 lets them route to a TOTP challenge instead.
+
 ## Scope Authorization
 
 Use `@RequireScope` to enforce OAuth scope checks on endpoints. This is designed for API key tokens that carry explicit scopes.

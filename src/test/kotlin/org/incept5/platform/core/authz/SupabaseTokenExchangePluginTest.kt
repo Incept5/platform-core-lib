@@ -337,6 +337,38 @@ class SupabaseTokenExchangePluginTest {
         }
     }
 
+    // AAL carry-through onto the principal — FF-3798 (H5)
+
+    @Test
+    fun `exchangeToken carries aal2 and SUPABASE source onto the principal`() {
+        val token = createSupabaseToken(
+            subject = UUID.randomUUID().toString(),
+            role = "platform_admin",
+            aal = "aal2"
+        )
+
+        val result = plugin.exchangeToken(token) as ApiPrincipal
+
+        result.authenticatorAssuranceLevel shouldBe "aal2"
+        result.tokenSource shouldBe org.incept5.platform.core.security.TokenSource.SUPABASE
+    }
+
+    @Test
+    fun `exchangeToken leaves a platform token with no assurance level and PLATFORM source`() {
+        val token = createPlatformToken(
+            subject = UUID.randomUUID().toString(),
+            role = "entity_admin",
+            entityType = "partner",
+            entityId = "P1",
+            scopes = listOf("payment:read")
+        )
+
+        val result = plugin.exchangeToken(token) as ApiPrincipal
+
+        result.authenticatorAssuranceLevel.shouldBeNull()
+        result.tokenSource shouldBe org.incept5.platform.core.security.TokenSource.PLATFORM
+    }
+
     // --- Role mapping unit tests (via plugin.mapRole) ---
 
     @Test
@@ -458,7 +490,8 @@ class SupabaseTokenExchangePluginTest {
         subject: String,
         role: String,
         entityType: String? = null,
-        entityId: String? = null
+        entityId: String? = null,
+        aal: String? = null
     ): String {
         val builder = JWT.create()
             .withSubject(subject)
@@ -466,6 +499,8 @@ class SupabaseTokenExchangePluginTest {
             .withIssuer("$baseApiUrl$supabaseAuthPath")
             .withIssuedAt(Instant.now())
             .withExpiresAt(Instant.now().plusSeconds(3600))
+
+        aal?.let { builder.withClaim("aal", it) }
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()

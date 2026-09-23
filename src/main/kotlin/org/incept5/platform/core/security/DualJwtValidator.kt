@@ -164,6 +164,11 @@ class DualJwtValidator @Inject constructor(
             // Scopes are no longer derived from role — authz-lib handles permissions
             val scopes = emptyList<String>()
 
+            // GoTrue writes "aal1" after a password grant and "aal2" after a verified TOTP
+            // challenge. Carried through so AssuranceLevelFilter can enforce server-side MFA; the
+            // claim is optional here (a token without it is treated as single-factor downstream).
+            val aal = jwt.getClaim("aal")?.asString()
+
             return TokenValidationResult.valid(
                 subject = subject,
                 userRole = userRole,
@@ -171,7 +176,8 @@ class DualJwtValidator @Inject constructor(
                 entityId = entityId,
                 scopes = scopes,
                 clientId = null,
-                tokenSource = TokenSource.SUPABASE
+                tokenSource = TokenSource.SUPABASE,
+                authenticatorAssuranceLevel = aal,
             )
         } catch (e: Exception) {
             log.warn("Supabase token validation failed", e)
