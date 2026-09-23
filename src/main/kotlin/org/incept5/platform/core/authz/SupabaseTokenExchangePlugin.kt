@@ -63,8 +63,8 @@ class SupabaseTokenExchangePlugin(
             principalId = principalId,
             globalRoles = globalRoles,
             entityRoles = entityRoles,
-            authenticatorAssuranceLevel = result.authenticatorAssuranceLevel,
-            tokenSource = result.tokenSource,
+            assuranceLevel = result.assuranceLevel,
+            machinePrincipal = result.machinePrincipal,
         )
     }
 

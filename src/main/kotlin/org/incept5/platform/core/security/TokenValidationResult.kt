@@ -1,6 +1,7 @@
 
 package org.incept5.platform.core.security
 
+import org.incept5.authz.core.context.AssuranceLevel
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 
@@ -14,17 +15,17 @@ data class TokenValidationResult(
     val clientId: String? = null,
     val errorMessage: String? = null,
     /**
-     * Supabase authenticator assurance level (`aal` claim): `"aal1"` after a password grant,
-     * `"aal2"` after a verified TOTP challenge. Null for platform (API-key/service) tokens, which
-     * carry no `aal`, and for any Supabase token missing the claim. Consumed by
-     * [org.incept5.platform.core.authz.AssuranceLevelFilter] to enforce server-side MFA.
+     * Session assurance, provider-neutral. The validator maps the identity provider's own claim onto
+     * this (Supabase `aal2` -> [AssuranceLevel.MULTI_FACTOR], otherwise [AssuranceLevel.SINGLE_FACTOR]);
+     * it is carried onto [org.incept5.platform.core.authz.ApiPrincipal] so authz-lib's
+     * `AssuranceLevelFilter` can enforce MFA without knowing any provider's claim names.
      */
-    val authenticatorAssuranceLevel: String? = null,
+    val assuranceLevel: AssuranceLevel = AssuranceLevel.SINGLE_FACTOR,
     /**
-     * Which validator produced this result. Lets downstream enforcement exempt platform-issued
-     * tokens (API keys, service) from user-session controls such as MFA.
+     * True for a platform-issued credential — an API key or service-to-service token. Such
+     * principals are machine principals and are never subject to MFA, whatever roles they carry.
      */
-    val tokenSource: TokenSource? = null,
+    val machinePrincipal: Boolean = false,
 ) {
     companion object {
         fun valid(
@@ -34,8 +35,8 @@ data class TokenValidationResult(
             entityId: String?,
             scopes: List<String> = emptyList(),
             clientId: String? = null,
-            tokenSource: TokenSource,
-            authenticatorAssuranceLevel: String? = null,
+            assuranceLevel: AssuranceLevel = AssuranceLevel.SINGLE_FACTOR,
+            machinePrincipal: Boolean = false,
         ) = TokenValidationResult(
             isValid = true,
             subject = subject,
@@ -44,8 +45,8 @@ data class TokenValidationResult(
             entityId = entityId,
             scopes = scopes,
             clientId = clientId,
-            authenticatorAssuranceLevel = authenticatorAssuranceLevel,
-            tokenSource = tokenSource,
+            assuranceLevel = assuranceLevel,
+            machinePrincipal = machinePrincipal,
         )
     }
 }

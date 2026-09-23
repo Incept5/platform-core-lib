@@ -349,8 +349,8 @@ class SupabaseTokenExchangePluginTest {
 
         val result = plugin.exchangeToken(token) as ApiPrincipal
 
-        result.authenticatorAssuranceLevel shouldBe "aal2"
-        result.tokenSource shouldBe org.incept5.platform.core.security.TokenSource.SUPABASE
+        result.getAssuranceLevel() shouldBe org.incept5.authz.core.context.AssuranceLevel.MULTI_FACTOR
+        result.isMachinePrincipal() shouldBe false
     }
 
     @Test
@@ -365,8 +365,8 @@ class SupabaseTokenExchangePluginTest {
 
         val result = plugin.exchangeToken(token) as ApiPrincipal
 
-        result.authenticatorAssuranceLevel.shouldBeNull()
-        result.tokenSource shouldBe org.incept5.platform.core.security.TokenSource.PLATFORM
+        result.isMachinePrincipal() shouldBe true
+        result.getAssuranceLevel() shouldBe org.incept5.authz.core.context.AssuranceLevel.SINGLE_FACTOR
     }
 
     // --- Role mapping unit tests (via plugin.mapRole) ---

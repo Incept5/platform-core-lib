@@ -1,5 +1,6 @@
 
 package org.incept5.platform.core.security
+import org.incept5.authz.core.context.AssuranceLevel
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 
@@ -131,8 +132,8 @@ class DualJwtValidatorTest {
 
         val result = dualJwtValidator.validateToken(token)
 
-        result.authenticatorAssuranceLevel shouldBe "aal2"
-        result.tokenSource shouldBe TokenSource.SUPABASE
+        result.assuranceLevel shouldBe AssuranceLevel.MULTI_FACTOR
+        result.machinePrincipal shouldBe false
     }
 
     @Test
@@ -147,8 +148,8 @@ class DualJwtValidatorTest {
 
         val result = dualJwtValidator.validateToken(token)
 
-        result.authenticatorAssuranceLevel shouldBe "aal1"
-        result.tokenSource shouldBe TokenSource.SUPABASE
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
+        result.machinePrincipal shouldBe false
     }
 
     @Test
@@ -162,8 +163,8 @@ class DualJwtValidatorTest {
 
         val result = dualJwtValidator.validateToken(token)
 
-        result.authenticatorAssuranceLevel shouldBe null
-        result.tokenSource shouldBe TokenSource.SUPABASE
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
+        result.machinePrincipal shouldBe false
     }
 
     @Test
@@ -188,8 +189,8 @@ class DualJwtValidatorTest {
 
         val result = validator.validateToken(token)
 
-        result.authenticatorAssuranceLevel shouldBe null
-        result.tokenSource shouldBe TokenSource.PLATFORM
+        result.machinePrincipal shouldBe true
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
     }
 
     // Platform Token Tests
