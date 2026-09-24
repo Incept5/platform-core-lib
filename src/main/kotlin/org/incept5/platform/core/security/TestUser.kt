@@ -12,5 +12,7 @@ data class TestUser(
     val firstName: String = "John",
     val lastName: String = "Doe",
     val entityId: String? = null,
-    val entityType: EntityType? = null
+    val entityType: EntityType? = null,
+    /** Supabase `aal` claim to stamp on the token; null omits it (single-factor). */
+    val aal: String? = null
 )

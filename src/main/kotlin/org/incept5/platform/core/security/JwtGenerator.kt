@@ -48,6 +48,10 @@ open class JwtGenerator(
             .withIssuer(issuer)
             .withClaim("email", "${user.userId}@test.com")
 
+        // Stamp the Supabase authenticator assurance level when the test sets one (aal1/aal2);
+        // omitting it mirrors a token that predates MFA / carries no aal claim.
+        user.aal?.let { tokenBuilder.withClaim("aal", it) }
+
         // Create app_metadata map
         val appMetadata = createAppMetadata(user.entityId, user.entityType?.value)
 

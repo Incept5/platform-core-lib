@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import org.eclipse.microprofile.config.inject.ConfigProperty
+import org.incept5.authz.core.context.AssuranceLevel
 import org.incept5.platform.core.error.ApiException
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
@@ -164,6 +165,14 @@ class DualJwtValidator @Inject constructor(
             // Scopes are no longer derived from role — authz-lib handles permissions
             val scopes = emptyList<String>()
 
+            // GoTrue writes "aal2" after a verified TOTP challenge; a password grant is "aal1" and
+            // a legacy token may carry no claim. This is the ONLY place the Supabase claim value is
+            // interpreted — it is mapped to the provider-neutral AssuranceLevel here, and authz-lib's
+            // enforcement never sees "aal2".
+            val aal = jwt.getClaim("aal")?.asString()
+            val assuranceLevel =
+                if (aal == "aal2") AssuranceLevel.MULTI_FACTOR else AssuranceLevel.SINGLE_FACTOR
+
             return TokenValidationResult.valid(
                 subject = subject,
                 userRole = userRole,
@@ -171,7 +180,7 @@ class DualJwtValidator @Inject constructor(
                 entityId = entityId,
                 scopes = scopes,
                 clientId = null,
-                tokenSource = TokenSource.SUPABASE
+                assuranceLevel = assuranceLevel,
             )
         } catch (e: Exception) {
             log.warn("Supabase token validation failed", e)
@@ -217,7 +226,7 @@ class DualJwtValidator @Inject constructor(
                 entityId = entityId,
                 scopes = scopes,
                 clientId = clientId,
-                tokenSource = TokenSource.PLATFORM
+                machinePrincipal = true,
             )
         } catch (e: Exception) {
             log.warn("Platform token validation failed", e)

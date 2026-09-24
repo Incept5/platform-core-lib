@@ -62,7 +62,9 @@ class SupabaseTokenExchangePlugin(
             clientId = result.clientId,
             principalId = principalId,
             globalRoles = globalRoles,
-            entityRoles = entityRoles
+            entityRoles = entityRoles,
+            assuranceLevel = result.assuranceLevel,
+            machinePrincipal = result.machinePrincipal,
         )
     }
 

@@ -337,6 +337,38 @@ class SupabaseTokenExchangePluginTest {
         }
     }
 
+    // AAL -> assurance level mapping carried onto the principal — FF-3798 (H5)
+
+    @Test
+    fun `exchangeToken maps aal2 to MULTI_FACTOR on the principal`() {
+        val token = createSupabaseToken(
+            subject = UUID.randomUUID().toString(),
+            role = "platform_admin",
+            aal = "aal2"
+        )
+
+        val result = plugin.exchangeToken(token) as ApiPrincipal
+
+        result.getAssuranceLevel() shouldBe org.incept5.authz.core.context.AssuranceLevel.MULTI_FACTOR
+        result.isMachinePrincipal() shouldBe false
+    }
+
+    @Test
+    fun `exchangeToken marks a platform token as a machine principal`() {
+        val token = createPlatformToken(
+            subject = UUID.randomUUID().toString(),
+            role = "entity_admin",
+            entityType = "partner",
+            entityId = "P1",
+            scopes = listOf("payment:read")
+        )
+
+        val result = plugin.exchangeToken(token) as ApiPrincipal
+
+        result.isMachinePrincipal() shouldBe true
+        result.getAssuranceLevel() shouldBe org.incept5.authz.core.context.AssuranceLevel.SINGLE_FACTOR
+    }
+
     // --- Role mapping unit tests (via plugin.mapRole) ---
 
     @Test
@@ -458,7 +490,8 @@ class SupabaseTokenExchangePluginTest {
         subject: String,
         role: String,
         entityType: String? = null,
-        entityId: String? = null
+        entityId: String? = null,
+        aal: String? = null
     ): String {
         val builder = JWT.create()
             .withSubject(subject)
@@ -466,6 +499,8 @@ class SupabaseTokenExchangePluginTest {
             .withIssuer("$baseApiUrl$supabaseAuthPath")
             .withIssuedAt(Instant.now())
             .withExpiresAt(Instant.now().plusSeconds(3600))
+
+        aal?.let { builder.withClaim("aal", it) }
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()

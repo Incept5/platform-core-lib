@@ -106,6 +106,14 @@ The `SupabaseTokenExchangePlugin` implements authz-lib's `TokenExchangePlugin` i
 
 The plugin handles legacy role name mapping (e.g. `platform_admin` to `backoffice.admin`) during the transition period. This mapping will be removed in a future release once all tokens use the new role names directly.
 
+## Session assurance level (MFA)
+
+`DualJwtValidator` reads the Supabase `aal` claim and maps it onto authz-lib's provider-neutral `AssuranceLevel`: `aal2` (a verified TOTP challenge) becomes `MULTI_FACTOR`, and `aal1` or an absent claim becomes `SINGLE_FACTOR`. This is the only place the Supabase claim value is interpreted. Platform-issued tokens (API keys, service tokens) are marked as machine principals.
+
+`SupabaseTokenExchangePlugin` carries both — the assurance level and the machine flag — onto the `ApiPrincipal` (which overrides `PrincipalContext.getAssuranceLevel()` and `isMachinePrincipal()`).
+
+The **enforcement** — refusing a configured role below `MULTI_FACTOR` with 403 `MFA_REQUIRED` — lives in **authz-lib** (`AssuranceLevelFilter`), which reads only the provider-neutral enum and the machine flag. See authz-lib for the `incept5.authz.mfa` configuration. Nothing here references a provider claim beyond the single `aal` read above.
+
 ## Scope Authorization
 
 Use `@RequireScope` to enforce OAuth scope checks on endpoints. This is designed for API key tokens that carry explicit scopes.

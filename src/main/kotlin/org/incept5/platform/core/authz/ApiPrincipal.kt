@@ -1,5 +1,6 @@
 package org.incept5.platform.core.authz
 
+import org.incept5.authz.core.context.AssuranceLevel
 import org.incept5.authz.core.context.PrincipalContext
 import org.incept5.authz.core.model.EntityRole
 import org.incept5.platform.core.model.EntityType
@@ -22,7 +23,14 @@ data class ApiPrincipal(
     val clientId: String?,
     private val principalId: UUID,
     private val globalRoles: List<String>,
-    private val entityRoles: List<EntityRole> = emptyList()
+    private val entityRoles: List<EntityRole> = emptyList(),
+    /**
+     * Session assurance, mapped from the Supabase `aal` claim by the validator. Defaulted to
+     * [AssuranceLevel.SINGLE_FACTOR] so existing constructors (all in tests) keep compiling.
+     */
+    private val assuranceLevel: AssuranceLevel = AssuranceLevel.SINGLE_FACTOR,
+    /** True for platform-issued (API-key / service) tokens; exempts them from MFA enforcement. */
+    private val machinePrincipal: Boolean = false,
 ) : PrincipalContext {
 
     override fun getName(): String = subject
@@ -32,4 +40,8 @@ data class ApiPrincipal(
     override fun getGlobalRoles(): List<String> = globalRoles
 
     override fun getEntityRoles(): List<EntityRole> = entityRoles
+
+    override fun getAssuranceLevel(): AssuranceLevel = assuranceLevel
+
+    override fun isMachinePrincipal(): Boolean = machinePrincipal
 }

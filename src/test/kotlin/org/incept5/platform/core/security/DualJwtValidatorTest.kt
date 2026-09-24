@@ -1,5 +1,6 @@
 
 package org.incept5.platform.core.security
+import org.incept5.authz.core.context.AssuranceLevel
 import org.incept5.platform.core.model.EntityType
 import org.incept5.platform.core.model.UserRole
 
@@ -115,6 +116,99 @@ class DualJwtValidatorTest {
         result.isValid shouldBe true
         result.userRole shouldBe UserRole.of("platform_admin")
         result.scopes shouldBe emptyList()
+    }
+
+    // AAL claim -> provider-neutral assurance level mapping — FF-3798 (H5)
+
+    @Test
+    fun `maps aal2 to MULTI_FACTOR for a verified Supabase token`() {
+        val token = createSupabaseToken(
+            subject = "admin-aal2",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal2"
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.assuranceLevel shouldBe AssuranceLevel.MULTI_FACTOR
+        result.machinePrincipal shouldBe false
+    }
+
+    @Test
+    fun `maps aal1 to SINGLE_FACTOR for a single-factor Supabase token`() {
+        val token = createSupabaseToken(
+            subject = "admin-aal1",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal1"
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
+        result.machinePrincipal shouldBe false
+    }
+
+    @Test
+    fun `treats a Supabase token with no aal claim as SINGLE_FACTOR`() {
+        val token = createSupabaseToken(
+            subject = "admin-no-aal",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
+        result.machinePrincipal shouldBe false
+    }
+
+    @Test
+    fun `treats an unrecognised aal value as SINGLE_FACTOR (fail closed)`() {
+        val token = createSupabaseToken(
+            subject = "admin-weird-aal",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal3"
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        // Only the literal "aal2" is multi-factor; anything unrecognised (a future GoTrue level, a
+        // typo, an attacker's guess) fails closed to single-factor rather than being trusted.
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
+        result.machinePrincipal shouldBe false
+    }
+
+    @Test
+    fun `platform token is a machine principal`() {
+        val token = createPlatformToken(
+            subject = "client-123",
+            role = "entity_admin",
+            entityType = "partner",
+            entityId = "partner-789",
+            scopes = listOf("payment:read")
+        )
+        val validator = DualJwtValidator(
+            jwtSecret = jwtSecret,
+            baseApiUrl = baseApiUrl,
+            supabaseAuthPath = supabaseAuthPath,
+            platformOauthPath = platformOauthPath,
+            rsaEnabled = false,
+            rsaPublicKey = Optional.empty(),
+            jwksUrl = Optional.empty(),
+            hmacFallbackEnabled = true
+        )
+
+        val result = validator.validateToken(token)
+
+        result.machinePrincipal shouldBe true
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
     }
 
     // Platform Token Tests
@@ -399,13 +493,16 @@ class DualJwtValidatorTest {
         subject: String,
         role: String,
         entityType: String?,
-        entityId: String?
+        entityId: String?,
+        aal: String? = null
     ): String {
         val tokenBuilder = JWT.create()
             .withSubject(subject)
             .withIssuer("$baseApiUrl$supabaseAuthPath")
             .withClaim("role", role)
             .withExpiresAt(Date.from(Instant.now().plusSeconds(3600)))
+
+        aal?.let { tokenBuilder.withClaim("aal", it) }
 
         if (entityType != null || entityId != null) {
             val appMetadata = mutableMapOf<String, Any>()
