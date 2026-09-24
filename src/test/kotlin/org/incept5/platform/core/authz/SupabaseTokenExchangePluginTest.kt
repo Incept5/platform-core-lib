@@ -337,10 +337,10 @@ class SupabaseTokenExchangePluginTest {
         }
     }
 
-    // AAL carry-through onto the principal — FF-3798 (H5)
+    // AAL -> assurance level mapping carried onto the principal — FF-3798 (H5)
 
     @Test
-    fun `exchangeToken carries aal2 and SUPABASE source onto the principal`() {
+    fun `exchangeToken maps aal2 to MULTI_FACTOR on the principal`() {
         val token = createSupabaseToken(
             subject = UUID.randomUUID().toString(),
             role = "platform_admin",
@@ -354,7 +354,7 @@ class SupabaseTokenExchangePluginTest {
     }
 
     @Test
-    fun `exchangeToken leaves a platform token with no assurance level and PLATFORM source`() {
+    fun `exchangeToken marks a platform token as a machine principal`() {
         val token = createPlatformToken(
             subject = UUID.randomUUID().toString(),
             role = "entity_admin",

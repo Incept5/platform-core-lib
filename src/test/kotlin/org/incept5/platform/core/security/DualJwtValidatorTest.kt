@@ -118,10 +118,10 @@ class DualJwtValidatorTest {
         result.scopes shouldBe emptyList()
     }
 
-    // AAL (authenticator assurance level) carry-through — FF-3798 (H5)
+    // AAL claim -> provider-neutral assurance level mapping — FF-3798 (H5)
 
     @Test
-    fun `carries aal2 and SUPABASE source through from a verified Supabase token`() {
+    fun `maps aal2 to MULTI_FACTOR for a verified Supabase token`() {
         val token = createSupabaseToken(
             subject = "admin-aal2",
             role = "platform_admin",
@@ -137,7 +137,7 @@ class DualJwtValidatorTest {
     }
 
     @Test
-    fun `carries aal1 through from a single-factor Supabase token`() {
+    fun `maps aal1 to SINGLE_FACTOR for a single-factor Supabase token`() {
         val token = createSupabaseToken(
             subject = "admin-aal1",
             role = "platform_admin",
@@ -153,7 +153,7 @@ class DualJwtValidatorTest {
     }
 
     @Test
-    fun `leaves assurance level null when the Supabase token has no aal claim`() {
+    fun `treats a Supabase token with no aal claim as SINGLE_FACTOR`() {
         val token = createSupabaseToken(
             subject = "admin-no-aal",
             role = "platform_admin",
@@ -168,7 +168,25 @@ class DualJwtValidatorTest {
     }
 
     @Test
-    fun `platform token has no assurance level and PLATFORM source`() {
+    fun `treats an unrecognised aal value as SINGLE_FACTOR (fail closed)`() {
+        val token = createSupabaseToken(
+            subject = "admin-weird-aal",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal3"
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        // Only the literal "aal2" is multi-factor; anything unrecognised (a future GoTrue level, a
+        // typo, an attacker's guess) fails closed to single-factor rather than being trusted.
+        result.assuranceLevel shouldBe AssuranceLevel.SINGLE_FACTOR
+        result.machinePrincipal shouldBe false
+    }
+
+    @Test
+    fun `platform token is a machine principal`() {
         val token = createPlatformToken(
             subject = "client-123",
             role = "entity_admin",
