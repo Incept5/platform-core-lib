@@ -77,6 +77,24 @@ class DualJwtValidatorTest {
         result.entityType shouldBe null
         result.entityId shouldBe null
         result.scopes shouldBe emptyList()
+        // FF-3799 (AC8): the service_role key is a service-to-service credential -> machine
+        // principal, so MFA enforcement never applies to it whatever roles it resolves to.
+        result.machinePrincipal shouldBe true
+    }
+
+    @Test
+    fun `a normal Supabase user token is not a machine principal`() {
+        val token = createSupabaseToken(
+            subject = "user-123",
+            role = "platform_admin",
+            entityType = null,
+            entityId = null,
+            aal = "aal2",
+        )
+
+        val result = dualJwtValidator.validateToken(token)
+
+        result.machinePrincipal shouldBe false
     }
 
     @Test
