@@ -173,6 +173,13 @@ class DualJwtValidator @Inject constructor(
             val assuranceLevel =
                 if (aal == "aal2") AssuranceLevel.MULTI_FACTOR else AssuranceLevel.SINGLE_FACTOR
 
+            // The Supabase `service_role` key is a service-to-service credential, not a human
+            // session, so it is a machine principal — exempt from MFA enforcement whatever roles it
+            // resolves to (FF-3799 / story AC8). It never carries an `aal` claim, so without this it
+            // would be treated as single-factor and refused. Platform (OAuth) tokens are marked
+            // machine in validatePlatformToken; this covers the Supabase service key.
+            val machinePrincipal = rawRole == "service_role"
+
             return TokenValidationResult.valid(
                 subject = subject,
                 userRole = userRole,
@@ -181,6 +188,7 @@ class DualJwtValidator @Inject constructor(
                 scopes = scopes,
                 clientId = null,
                 assuranceLevel = assuranceLevel,
+                machinePrincipal = machinePrincipal,
             )
         } catch (e: Exception) {
             log.warn("Supabase token validation failed", e)

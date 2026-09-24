@@ -95,6 +95,8 @@ class SupabaseTokenExchangePluginTest {
         result.shouldNotBeNull()
         result.getGlobalRoles().shouldContainExactly("service.role")
         result.getEntityRoles().shouldBeEmpty()
+        // FF-3799 (AC8): a service_role principal is a machine principal, so MFA never applies.
+        (result as ApiPrincipal).isMachinePrincipal() shouldBe true
     }
 
     // AC2: entity_admin + partner maps to partner.admin
